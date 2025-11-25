@@ -2,6 +2,47 @@
 
 A complete discussion forum web application built with Django REST Framework and React.
 
+---
+
+## 🚀 AWS DEPLOYMENT - START HERE!
+
+**Dla Teammateów:** Instrukcje wdrożenia aplikacji na AWS znajdują się w folderze **[`how_to_aws_deploy/`](how_to_aws_deploy/)**
+
+### 📂 Struktura Deployment Documentation:
+
+| Plik | Opis |
+|------|------|
+| **[how_to_aws_deploy/README.md](how_to_aws_deploy/README.md)** | Przegląd architektury, wymagania, plan wdrożenia |
+| **[how_to_aws_deploy/DAY_1_INFRASTRUCTURE.md](how_to_aws_deploy/DAY_1_INFRASTRUCTURE.md)** | Dzień 1: Setup infrastruktury AWS (VPC, RDS, ALB, Security Groups) |
+| **[how_to_aws_deploy/DAY_2_DEPLOYMENT.md](how_to_aws_deploy/DAY_2_DEPLOYMENT.md)** | Dzień 2: Deployment aplikacji (Docker, ASG, migracje, Cloudflare) |
+| **[how_to_aws_deploy/QUICK_REFERENCE.md](how_to_aws_deploy/QUICK_REFERENCE.md)** | Cheatsheet - szybkie komendy AWS CLI |
+| **[AWS_IDs_TRACKER.md](AWS_IDs_TRACKER.md)** | Notatnik na ID zasobów AWS (wypełnijcie w trakcie) |
+
+### ⚡ Quick Start Deployment:
+1. **Przeczytaj:** [`how_to_aws_deploy/README.md`](how_to_aws_deploy/README.md) - 10 min
+2. **Dzień 1 (3-4h):** [`how_to_aws_deploy/DAY_1_INFRASTRUCTURE.md`](how_to_aws_deploy/DAY_1_INFRASTRUCTURE.md) - Setup infrastruktury
+3. **Dzień 2 (3-4h):** [`how_to_aws_deploy/DAY_2_DEPLOYMENT.md`](how_to_aws_deploy/DAY_2_DEPLOYMENT.md) - Deployment aplikacji
+
+### 🏗️ Architektura AWS (zgodnie z L3):
+```
+Cloudflare (DNS, SSL/TLS, WAF, CDN, DDoS Protection)
+    ↓
+AWS Application Load Balancer (public subnets)
+    ↓
+Auto Scaling Group: 2-4x EC2 t2.micro (private subnets)
+  ├── Nginx :80 (reverse proxy)
+  ├── Django :8000 (Docker z ECR)
+  └── React build (static z S3)
+    ↓
+RDS PostgreSQL t4g.micro (private subnet, izolowana)
+```
+
+**💰 Koszty:** ~$0-8/miesiąc w Free Tier (12 miesięcy), ~$56/mies po Free Tier
+
+**⏰ Czas wdrożenia:** 2 dni (6-8 godzin total)
+
+---
+
 ## 🎯 Project Overview
 
 This is a full-stack forum application with user authentication, categories, threads, and posts. Users can register, create discussion threads, and reply to existing threads. The application follows RESTful API architecture with JWT token-based authentication.
