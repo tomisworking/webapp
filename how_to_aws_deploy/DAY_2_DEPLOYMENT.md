@@ -102,9 +102,9 @@ Będziesz potrzebować (wszystkie wartości są w `AWS_IDs_TRACKER.md`):
 postgresql://forumadmin:[AWS_IDs_TRACKER: Master Password]@[AWS_IDs_TRACKER: DB Endpoint]:5432/forumdb
 ```
 
-**Przykład z Twoimi danymi:**
+**Twoja konkretna DATABASE_URL:**
 ```
-postgresql://forumadmin:[TWOJE HASŁO Z AWS_IDs_TRACKER]@[TWÓJ ENDPOINT Z AWS_IDs_TRACKER]:5432/forumdb
+postgresql://forumadmin:ForumDB2024!Secure@forum-db.caps6eywcswv.us-east-1.rds.amazonaws.com:5432/forumdb
 ```
 
 ### 1.3. Dodaj parametry do AWS
@@ -148,8 +148,10 @@ Kliknij **Create parameter**
 - **Type:** String (nie SecureString)
 - **Value:** `[AWS_IDs_TRACKER: ALB DNS],localhost,127.0.0.1`
 
-**📋 Weź ALB DNS z AWS_IDs_TRACKER.md sekcja "LOAD BALANCER"**
-  - Przykład: `forum-alb-123.eu-central-1.elb.amazonaws.com,localhost,127.0.0.1`
+**📋 Twój konkretny przykład:**
+  ```
+  forum-alb-1684129147.us-east-1.elb.amazonaws.com,localhost,127.0.0.1
+  ```
 
 Kliknij **Create parameter**
 
@@ -178,18 +180,15 @@ Kliknij **Create parameter**
 cd D:\Users\TOMEK\CURRENT_AMBER_VERSION\WEBAPP
 
 # Login do ECR
-aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin [AWS_IDs_TRACKER: ECR URI - BEZ '/forum-backend']
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin [AWS_IDs_TRACKER: ECR URI - BEZ '/forum-backend']
 ```
 
 **📋 Weź ECR URI z AWS_IDs_TRACKER.md sekcja "ECR REPOSITORY"**
 **UWAGA:** Usuń `/forum-backend` z końca URI!
 
-**Przykład:**
-Jeśli ECR URI = `123456789012.dkr.ecr.eu-central-1.amazonaws.com/forum-backend`
-Użyj: `123456789012.dkr.ecr.eu-central-1.amazonaws.com`
-
+**Twój konkretny przykład:**
 ```bash
-aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 123456789012.dkr.ecr.eu-central-1.amazonaws.com
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 311603531332.dkr.ecr.us-east-1.amazonaws.com
 ```
 
 Powinno pokazać: **Login Succeeded**
@@ -216,9 +215,9 @@ docker tag forum-backend:latest [AWS_IDs_TRACKER: ECR URI]:latest
 
 **📋 Użyj pełnego ECR URI z AWS_IDs_TRACKER.md (z `/forum-backend`)**
 
-**Przykład:**
+**Twój konkretny przykład:**
 ```bash
-docker tag forum-backend:latest 123456789012.dkr.ecr.eu-central-1.amazonaws.com/forum-backend:latest
+docker tag forum-backend:latest 311603531332.dkr.ecr.us-east-1.amazonaws.com/forum-backend:latest
 ```
 
 ### 2.4. Push do ECR
@@ -263,9 +262,9 @@ REACT_APP_API_URL=http://[AWS_IDs_TRACKER: ALB DNS]
 EOF
 ```
 
-**Przykład zawartości `.env.production`:**
+**Twoja konkretna zawartość `.env.production`:**
 ```
-REACT_APP_API_URL=http://forum-alb-123.eu-central-1.elb.amazonaws.com
+REACT_APP_API_URL=http://forum-alb-1684129147.us-east-1.elb.amazonaws.com
 ```
 
 ### 3.2. Install dependencies (jeśli jeszcze nie)
@@ -301,9 +300,9 @@ aws s3 sync frontend/build/ s3://[AWS_IDs_TRACKER: S3 Bucket - FRONTEND_BUCKET]/
 
 **📋 Użyj nazwy S3 bucket zapisanej w Parameter Store - sekcja "SECRETS (Parameter Store)" w AWS_IDs_TRACKER.md**
 
-**Przykład:**
+**Twój konkretny przykład:**
 ```bash
-aws s3 sync frontend/build/ s3://forum-frontend-builds-tomek-2024/latest/ --delete
+aws s3 sync frontend/build/ s3://forum-frontend-builds-kongoapp/latest/ --delete
 ```
 
 **Sprawdź w AWS Console:**
@@ -414,14 +413,14 @@ systemctl enable nginx
 
 # Get configuration from Parameter Store
 echo "Fetching configuration from Parameter Store..."
-REGION="eu-central-1"
+REGION="us-east-1"
 SECRET_KEY=$(aws ssm get-parameter --name "/forum/SECRET_KEY" --with-decryption --query "Parameter.Value" --output text --region $REGION)
 DATABASE_URL=$(aws ssm get-parameter --name "/forum/DATABASE_URL" --with-decryption --query "Parameter.Value" --output text --region $REGION)
 ALLOWED_HOSTS=$(aws ssm get-parameter --name "/forum/ALLOWED_HOSTS" --query "Parameter.Value" --output text --region $REGION)
 FRONTEND_BUCKET=$(aws ssm get-parameter --name "/forum/FRONTEND_BUCKET" --query "Parameter.Value" --output text --region $REGION)
 
 # ECR Repository URI (REPLACE THIS WITH YOUR VALUE FROM AWS_IDs_TRACKER.md)
-ECR_URI="[AWS_IDs_TRACKER: ECR URI]"  # Example: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/forum-backend
+ECR_URI="311603531332.dkr.ecr.us-east-1.amazonaws.com/forum-backend"  # Twój konkretny URI
 
 # Login to ECR
 echo "Logging into ECR..."
@@ -745,32 +744,34 @@ docker exec -it forum-backend python manage.py seed_data
 
 ### 8.1. Sprawdź ALB DNS
 
-**📋 Użyj ALB DNS z AWS_IDs_TRACKER.md sekcja "LOAD BALANCER"**
+**📋 Twój ALB DNS (zapisany w AWS_IDs_TRACKER.md):**
+```
+forum-alb-1684129147.us-east-1.elb.amazonaws.com
+```
 
 1. Idź do **EC2** → **Load Balancers**
 2. Kliknij na `forum-alb`
-3. Skopiuj **DNS name** (np. `forum-alb-123.eu-central-1.elb.amazonaws.com`)
-4. **Sprawdź czy to się zgadza z wartością w AWS_IDs_TRACKER.md**
+3. Skopiuj **DNS name** i sprawdź czy się zgadza z powyższym
 
 ### 8.2. Test w przeglądarce
 
-**Otwórz przeglądarkę i wejdź na:**
+**Otwórz przeglądarkę i wejdź na Twój ALB:**
 ```
-http://[AWS_IDs_TRACKER: ALB DNS]
+http://forum-alb-1684129147.us-east-1.elb.amazonaws.com
 ```
 
 Powinieneś zobaczyć **stronę React (Frontend)**!
 
 **Test health check:**
 ```
-http://[AWS_IDs_TRACKER: ALB DNS]/health
+http://forum-alb-1684129147.us-east-1.elb.amazonaws.com/health
 ```
 
 Powinno pokazać: `healthy`
 
 **Test API:**
 ```
-http://[AWS_IDs_TRACKER: ALB DNS]/api/categories/
+http://forum-alb-1684129147.us-east-1.elb.amazonaws.com/api/categories/
 ```
 
 Powinno pokazać JSON z kategoriami.
@@ -824,7 +825,7 @@ Cloudflare pokaże 2 nameservery (np. `alice.ns.cloudflare.com`, `bob.ns.cloudfl
 **Record 1: Root domain**
 - **Type:** CNAME
 - **Name:** `@` (oznacza root domain)
-- **Target:** `[AWS_IDs_TRACKER: ALB DNS]` (np. `forum-alb-123.eu-central-1.elb.amazonaws.com`)
+- **Target:** `forum-alb-1684129147.us-east-1.elb.amazonaws.com` (Twój ALB DNS)
 - **Proxy status:** Proxied (pomarańczowa chmurka) ⚠️ WAŻNE!
 - **TTL:** Auto
 
@@ -833,7 +834,7 @@ Kliknij **Save**
 **Record 2: WWW subdomain**
 - **Type:** CNAME
 - **Name:** `www`
-- **Target:** `[AWS_IDs_TRACKER: ALB DNS]`
+- **Target:** `forum-alb-1684129147.us-east-1.elb.amazonaws.com` (Twój ALB DNS)
 - **Proxy status:** Proxied
 - **TTL:** Auto
 
@@ -883,13 +884,12 @@ Teraz dodaj swoją domenę do ALLOWED_HOSTS.
 3. Kliknij: **Edit**
 4. **Value:** Dodaj swoją domenę:
    ```
-   [AWS_IDs_TRACKER: Domain],www.[AWS_IDs_TRACKER: Domain],[AWS_IDs_TRACKER: ALB DNS],localhost,127.0.0.1
+   [TWOJA-DOMENA],www.[TWOJA-DOMENA],forum-alb-1684129147.us-east-1.elb.amazonaws.com,localhost,127.0.0.1
    ```
-   **📋 Użyj wartości z AWS_IDs_TRACKER.md**
    
-   **Przykład:**
+   **Twój konkretny przykład (zamień TWOJA-DOMENA na swoją):**
    ```
-   mojeforum.tk,www.mojeforum.tk,forum-alb-123.eu-central-1.elb.amazonaws.com,localhost,127.0.0.1
+   mojeforum.tk,www.mojeforum.tk,forum-alb-1684129147.us-east-1.elb.amazonaws.com,localhost,127.0.0.1
    ```
 5. Kliknij **Save changes**
 
@@ -970,7 +970,7 @@ Wejdź na: `https://[AWS_IDs_TRACKER: Domain]/admin`
 |------|-------|-----------------------------------|
 | `AWS_ACCESS_KEY_ID` | `[AWS_IDs_TRACKER: Access Key ID]` | Sekcja "AWS CREDENTIALS" |
 | `AWS_SECRET_ACCESS_KEY` | `[AWS_IDs_TRACKER: Secret Access Key]` | Sekcja "AWS CREDENTIALS" |
-| `AWS_REGION` | `eu-central-1` | Sekcja "AWS CREDENTIALS" |
+| `AWS_REGION` | `us-east-1` | Sekcja "AWS CREDENTIALS" |
 | `ECR_REPOSITORY` | `forum-backend` | Sekcja "ECR REPOSITORY" |
 | `S3_BUCKET` | `[AWS_IDs_TRACKER: S3 Bucket]` | Sekcja "SECRETS (Parameter Store)" |
 | `ASG_NAME` | `forum-asg` | Sekcja "AUTO SCALING" |

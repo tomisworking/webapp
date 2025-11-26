@@ -10,11 +10,11 @@ Kto wypełnia: __________
 ## 🔐 AWS CREDENTIALS
 
 ```
-AWS Account ID: ______________________
-IAM Username: ______________________
-Access Key ID: ______________________
-Secret Access Key: ______________________
-Region: eu-central-1
+AWS Account ID: 311603531332
+IAM Username: ______________________ (wypełnij swoim username)
+Access Key ID: ______________________ (nie udostępniaj publicznie!)
+Secret Access Key: ______________________ (nie udostępniaj publicznie!)
+Region: us-east-1
 ```
 
 ---
@@ -22,25 +22,29 @@ Region: eu-central-1
 ## 🌐 VPC & NETWORKING
 
 ```
-VPC ID: vpc-______________________
+VPC ID: vpc-05ff311c776e4aea1
 
-Internet Gateway ID: igw-______________________
+Internet Gateway ID: igw-00d4728afdddf92db
 
 PUBLIC SUBNETS:
-  Public Subnet 1 (1a): subnet-______________________
-  Public Subnet 2 (1b): subnet-______________________
+  Public Subnet 1 (1a): subnet-0e801890e6a1c3e7a
+  Public Subnet 2 (1b): subnet-0976ad46c2ca3bd73
 
 PRIVATE SUBNETS:
-  Private Subnet 1 (1a): subnet-______________________
-  Private Subnet 2 (1b): subnet-______________________
+  Private Subnet 1 (1a): subnet-072cc390fea8a3d4d
+  Private Subnet 2 (1b): subnet-0a0e069ccfd7ce27e
+
+DB SUBNETS:
+  DB Subnet 1 (1a): subnet-0a5d74c8848073011
+  DB Subnet 2 (1b): subnet-079f042372b89ecec
 
 NAT GATEWAY:
-  Elastic IP Allocation: eipalloc-______________________
-  NAT Gateway ID: nat-______________________
+  Elastic IP Address: 100.28.147.103
+  NAT Gateway ID: nat-0464aca433dfa4772
 
 ROUTE TABLES:
-  Public RT: rtb-______________________
-  Private RT: rtb-______________________
+  Public RT: rtb-07882c1169a86da99
+  Private RT: rtb-0ed3fe72e62ac8fea
 ```
 
 ---
@@ -48,9 +52,9 @@ ROUTE TABLES:
 ## 🔒 SECURITY GROUPS
 
 ```
-ALB Security Group: sg-______________________
-EC2 Security Group: sg-______________________
-RDS Security Group: sg-______________________
+ALB Security Group: sg-01929c8ed5d6bd382
+EC2 Security Group: sg-0952d8bb8c260cd52
+RDS Security Group: sg-0e95c59beccd25718
 ```
 
 ---
@@ -62,18 +66,18 @@ DB Instance Identifier: forum-db
 DB Subnet Group: forum-db-subnet-group
 
 Master Username: forumadmin
-Master Password: ______________________
+Master Password: ForumDB2024!Secure
   (ZAPISZ BEZPIECZNIE!)
 
 DB Name: forumdb
-DB Endpoint: forum-db.______________________.eu-central-1.rds.amazonaws.com
+DB Endpoint: forum-db.caps6eywcswv.us-east-1.rds.amazonaws.com
 
 Port: 5432
 ```
 
 **DATABASE_URL (pełny):**
 ```
-postgresql://forumadmin:HASŁO@ENDPOINT:5432/forumdb
+postgresql://forumadmin:ForumDB2024!Secure@forum-db.caps6eywcswv.us-east-1.rds.amazonaws.com:5432/forumdb
 ```
 
 ---
@@ -82,7 +86,7 @@ postgresql://forumadmin:HASŁO@ENDPOINT:5432/forumdb
 
 ```
 Repository Name: forum-backend
-ECR URI: ______________________.dkr.ecr.eu-central-1.amazonaws.com/forum-backend
+ECR URI: 311603531332.dkr.ecr.us-east-1.amazonaws.com/forum-backend
 ```
 
 ---
@@ -91,13 +95,13 @@ ECR URI: ______________________.dkr.ecr.eu-central-1.amazonaws.com/forum-backend
 
 ```
 Target Group Name: forum-tg
-Target Group ARN: arn:aws:elasticloadbalancing:eu-central-1:______:targetgroup/forum-tg/________________
+Target Group ARN: arn:aws:elasticloadbalancing:us-east-1:311603531332:targetgroup/forum-tg/2fcc31d5819edc32
 
 Application Load Balancer Name: forum-alb
-ALB ARN: arn:aws:elasticloadbalancing:eu-central-1:______:loadbalancer/app/forum-alb/________________
-ALB DNS: forum-alb-________________.eu-central-1.elb.amazonaws.com
+ALB ARN: arn:aws:elasticloadbalancing:us-east-1:311603531332:loadbalancer/app/forum-alb/________________
+ALB DNS: forum-alb-1684129147.us-east-1.elb.amazonaws.com
 
-Listener ARN: arn:aws:elasticloadbalancing:eu-central-1:______:listener/app/forum-alb/________________
+Listener ARN: arn:aws:elasticloadbalancing:us-east-1:311603531332:listener/app/forum-alb/________________
 ```
 
 ---
@@ -137,11 +141,11 @@ Instance 2:
 ## 🔐 IAM ROLES
 
 ```
-Role Name: EC2-Forum-Role
-Role ARN: arn:aws:iam::______________________:role/EC2-Forum-Role
+Role Name: forum-ec2-role
+Role ARN: arn:aws:iam::311603531332:role/forum-ec2-role
 
-Instance Profile Name: EC2-Forum-Profile
-Instance Profile ARN: arn:aws:iam::______________________:instance-profile/EC2-Forum-Profile
+Instance Profile Name: forum-ec2-role
+Instance Profile ARN: arn:aws:iam::311603531332:instance-profile/forum-ec2-role
 ```
 
 ---
@@ -152,12 +156,17 @@ Instance Profile ARN: arn:aws:iam::______________________:instance-profile/EC2-F
 /forum/DATABASE_URL: ✅ Created
 /forum/SECRET_KEY: ✅ Created
 /forum/ALLOWED_HOSTS: ✅ Created
-/forum/CORS_ALLOWED_ORIGINS: ✅ Created
+/forum/FRONTEND_BUCKET: forum-frontend-builds-kongoapp
 ```
 
 **SECRET_KEY (zapisz backup):**
 ```
-______________________________________________________
+django-insecure-dev-key-change-in-production-123456789
+```
+
+**S3 Bucket Name:**
+```
+forum-frontend-builds-kongoapp
 ```
 
 ---
@@ -165,7 +174,7 @@ ______________________________________________________
 ## 🌍 CLOUDFLARE
 
 ```
-Domain: ______________________
+Domain: ______________________ (twoja domena, np. mojeforum.tk)
 Cloudflare Account Email: ______________________
 
 Nameservers:
@@ -174,14 +183,14 @@ Nameservers:
 
 DNS Records:
   Type: CNAME
-  Name: api
-  Target: forum-alb-________________.eu-central-1.elb.amazonaws.com
+  Name: @ (root domain)
+  Target: forum-alb-1684129147.us-east-1.elb.amazonaws.com
   Proxy: ☑️ Proxied
 
-  Type: CNAME (if frontend)
+  Type: CNAME
   Name: www
-  Target: ______________________
-  Proxy: ☐ DNS only
+  Target: forum-alb-1684129147.us-east-1.elb.amazonaws.com
+  Proxy: ☑️ Proxied
 ```
 
 ---
@@ -189,11 +198,15 @@ DNS Records:
 ## 🔗 FINAL URLs
 
 ```
-Backend API: https://api.______________________
-Admin Panel: https://api.______________________/admin/
-Frontend: https://______________________ (if deployed)
+ALB Direct Access (HTTP): http://forum-alb-1684129147.us-east-1.elb.amazonaws.com
+Health Check: http://forum-alb-1684129147.us-east-1.elb.amazonaws.com/health
+API Categories: http://forum-alb-1684129147.us-east-1.elb.amazonaws.com/api/categories/
+Admin Panel: http://forum-alb-1684129147.us-east-1.elb.amazonaws.com/admin/
 
-Health Check: https://api.______________________/api/health/
+With Cloudflare (HTTPS - po konfiguracji domeny):
+Frontend: https://[TWOJA-DOMENA]
+Admin Panel: https://[TWOJA-DOMENA]/admin/
+Health Check: https://[TWOJA-DOMENA]/api/health/
 ```
 
 ---
