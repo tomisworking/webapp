@@ -32,6 +32,39 @@
 - [ ] AWS CLI skonfigurowane
 - [ ] Sklonowane repo: `git pull origin main`
 
+### 📂 WAŻNE: Otwórz plik `AWS_IDs_TRACKER.md`
+**Wszystkie wartości potrzebne w tym tutorialu znajdują się w `AWS_IDs_TRACKER.md`!**
+
+Podczas wykonywania kroków, będziemy się odwoływać do wartości z tego pliku w formacie:
+- `[AWS_IDs_TRACKER: RDS Endpoint]` = Zobacz sekcję "RDS POSTGRESQL" w AWS_IDs_TRACKER.md
+- `[AWS_IDs_TRACKER: ALB DNS]` = Zobacz sekcję "LOAD BALANCER" w AWS_IDs_TRACKER.md
+- itd.
+
+---
+
+## 📖 Jak Używać AWS_IDs_TRACKER.md
+
+**W tym tutorialu często zobaczysz:**
+```
+[AWS_IDs_TRACKER: Nazwa Wartości]
+```
+
+To oznacza: **Otwórz plik `AWS_IDs_TRACKER.md` i znajdź tę wartość!**
+
+### Przykład:
+Gdy widzisz:
+```bash
+docker tag forum-backend:latest [AWS_IDs_TRACKER: ECR URI]:latest
+```
+
+1. Otwórz `AWS_IDs_TRACKER.md`
+2. Znajdź sekcję "📦 ECR REPOSITORY"
+3. Skopiuj wartość z pola "ECR URI"
+4. Wklej ją w poleceniu
+
+### 💡 Wskazówka:
+Miej otwarty `AWS_IDs_TRACKER.md` w drugim oknie/monitorze podczas całego deploymentu!
+
 ---
 
 ## 🔐 KROK 1: Parameter Store (Secrets)
@@ -59,19 +92,19 @@ python3 -c "from django.core.management.utils import get_random_secret_key; prin
 
 ### 1.2. Przygotuj zmienne środowiskowe
 
-Będziesz potrzebować:
+Będziesz potrzebować (wszystkie wartości są w `AWS_IDs_TRACKER.md`):
 - **SECRET_KEY** - wygenerowany wyżej
-- **DATABASE_URL** - z RDS (DAY 1)
-- **ALLOWED_HOSTS** - ALB DNS name (DAY 1)
+- **DATABASE_URL** - `[AWS_IDs_TRACKER: DB Endpoint + Master Password]`
+- **ALLOWED_HOSTS** - `[AWS_IDs_TRACKER: ALB DNS]`
 
 **Format DATABASE_URL:**
 ```
-postgresql://forumadmin:[HASŁO]@[RDS-ENDPOINT]:5432/forumdb
+postgresql://forumadmin:[AWS_IDs_TRACKER: Master Password]@[AWS_IDs_TRACKER: DB Endpoint]:5432/forumdb
 ```
 
-Przykład:
+**Przykład z Twoimi danymi:**
 ```
-postgresql://forumadmin:ForumDB2024!Secure@forum-db.abc123.eu-central-1.rds.amazonaws.com:5432/forumdb
+postgresql://forumadmin:[TWOJE HASŁO Z AWS_IDs_TRACKER]@[TWÓJ ENDPOINT Z AWS_IDs_TRACKER]:5432/forumdb
 ```
 
 ### 1.3. Dodaj parametry do AWS
@@ -101,7 +134,9 @@ Kliknij **Create parameter**
 - **Name:** `/forum/DATABASE_URL`
 - **Description:** `PostgreSQL connection string`
 - **Type:** SecureString
-- **Value:** `postgresql://forumadmin:[TWOJE-HASŁO]@[RDS-ENDPOINT]:5432/forumdb`
+- **Value:** `postgresql://forumadmin:[AWS_IDs_TRACKER: Master Password]@[AWS_IDs_TRACKER: DB Endpoint]:5432/forumdb`
+
+**📋 Weź wartości z AWS_IDs_TRACKER.md sekcja "RDS POSTGRESQL"**
 
 Kliknij **Create parameter**
 
@@ -111,7 +146,9 @@ Kliknij **Create parameter**
 - **Name:** `/forum/ALLOWED_HOSTS`
 - **Description:** `Django allowed hosts`
 - **Type:** String (nie SecureString)
-- **Value:** `[ALB-DNS-NAME],localhost,127.0.0.1`
+- **Value:** `[AWS_IDs_TRACKER: ALB DNS],localhost,127.0.0.1`
+
+**📋 Weź ALB DNS z AWS_IDs_TRACKER.md sekcja "LOAD BALANCER"**
   - Przykład: `forum-alb-123.eu-central-1.elb.amazonaws.com,localhost,127.0.0.1`
 
 Kliknij **Create parameter**
@@ -141,10 +178,16 @@ Kliknij **Create parameter**
 cd D:\Users\TOMEK\CURRENT_AMBER_VERSION\WEBAPP
 
 # Login do ECR
-aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin [TWOJE-ECR-URI-BEZ-REPO-NAME]
+aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin [AWS_IDs_TRACKER: ECR URI - BEZ '/forum-backend']
 ```
 
+**📋 Weź ECR URI z AWS_IDs_TRACKER.md sekcja "ECR REPOSITORY"**
+**UWAGA:** Usuń `/forum-backend` z końca URI!
+
 **Przykład:**
+Jeśli ECR URI = `123456789012.dkr.ecr.eu-central-1.amazonaws.com/forum-backend`
+Użyj: `123456789012.dkr.ecr.eu-central-1.amazonaws.com`
+
 ```bash
 aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin 123456789012.dkr.ecr.eu-central-1.amazonaws.com
 ```
@@ -168,8 +211,10 @@ docker images | grep forum-backend
 ### 2.3. Tag Image
 
 ```bash
-docker tag forum-backend:latest [TWOJE-ECR-URI]:latest
+docker tag forum-backend:latest [AWS_IDs_TRACKER: ECR URI]:latest
 ```
+
+**📋 Użyj pełnego ECR URI z AWS_IDs_TRACKER.md (z `/forum-backend`)**
 
 **Przykład:**
 ```bash
@@ -179,7 +224,7 @@ docker tag forum-backend:latest 123456789012.dkr.ecr.eu-central-1.amazonaws.com/
 ### 2.4. Push do ECR
 
 ```bash
-docker push [TWOJE-ECR-URI]:latest
+docker push [AWS_IDs_TRACKER: ECR URI]:latest
 ```
 
 ⏳ To zajmie 2-5 minut (w zależności od internetu).
@@ -202,17 +247,19 @@ docker push [TWOJE-ECR-URI]:latest
 cd ../frontend
 ```
 
+**📋 Użyj ALB DNS z AWS_IDs_TRACKER.md sekcja "LOAD BALANCER"**
+
 **Windows PowerShell:**
 ```powershell
 @"
-REACT_APP_API_URL=http://[ALB-DNS-NAME]
+REACT_APP_API_URL=http://[AWS_IDs_TRACKER: ALB DNS]
 "@ | Out-File -FilePath .env.production -Encoding utf8
 ```
 
 **Mac/Linux:**
 ```bash
 cat > .env.production << EOF
-REACT_APP_API_URL=http://[ALB-DNS-NAME]
+REACT_APP_API_URL=http://[AWS_IDs_TRACKER: ALB DNS]
 EOF
 ```
 
@@ -249,8 +296,10 @@ Powinny być pliki: `index.html`, `static/`, itp.
 cd ..
 
 # Upload React build do S3
-aws s3 sync frontend/build/ s3://[TWOJ-S3-BUCKET]/latest/ --delete
+aws s3 sync frontend/build/ s3://[AWS_IDs_TRACKER: S3 Bucket - FRONTEND_BUCKET]/latest/ --delete
 ```
+
+**📋 Użyj nazwy S3 bucket zapisanej w Parameter Store - sekcja "SECRETS (Parameter Store)" w AWS_IDs_TRACKER.md**
 
 **Przykład:**
 ```bash
@@ -289,7 +338,7 @@ aws s3 sync frontend/build/ s3://forum-frontend-builds-tomek-2024/latest/ --dele
 - Wybierz: **t2.micro** (Free tier)
 
 **Key pair (login):**
-- Jeśli masz key pair: wybierz go
+- Jeśli masz key pair: wybierz go (sprawdź w `AWS_IDs_TRACKER.md` sekcja "AUTO SCALING")
 - Jeśli nie masz:
   - Kliknij: **Create new key pair**
   - **Key pair name:** `forum-key`
@@ -297,11 +346,12 @@ aws s3 sync frontend/build/ s3://forum-frontend-builds-tomek-2024/latest/ --dele
   - **Private key format:** `.pem` (Mac/Linux) lub `.ppk` (Windows PuTTY)
   - Kliknij **Create key pair**
   - ⚠️ **ZAPISZ plik .pem/.ppk** bezpiecznie!
+  - 📝 **Zapisz lokalizację w `AWS_IDs_TRACKER.md` sekcja "AUTO SCALING"**
 
 **Network settings:**
 - **Subnet:** Nie wybieraj (zostaw Auto Scaling zdecyduje)
 - **Firewall (security groups):** Select existing
-  - Wybierz: `forum-ec2-sg`
+  - Wybierz: `forum-ec2-sg` **[AWS_IDs_TRACKER: EC2 Security Group]**
 
 **Advanced network configuration:**
 - **Auto-assign public IP:** Disable (będą w private subnets)
@@ -319,10 +369,12 @@ Kliknij **Add tag**:
 - **Resource types:** Zaznacz **Instances** i **Volumes**
 
 **Advanced details:**
-- **IAM instance profile:** Wybierz `forum-ec2-role`
+- **IAM instance profile:** Wybierz `forum-ec2-role` **[AWS_IDs_TRACKER: Instance Profile Name]**
 - **Metadata accessible:** Enabled
 - **Metadata version:** V2 only (IMDSv2)
-- **User data:** Wklej poniższy skrypt (PAMIĘTAJ ZASTĄPIĆ PLACEHOLDERY!)
+- **User data:** Wklej poniższy skrypt 
+
+**⚠️ KRYTYCZNE: W User Data zamień `[AWS_IDs_TRACKER: ECR URI]` na Twój rzeczywisty ECR URI z AWS_IDs_TRACKER.md!**
 
 ```bash
 #!/bin/bash
@@ -368,8 +420,8 @@ DATABASE_URL=$(aws ssm get-parameter --name "/forum/DATABASE_URL" --with-decrypt
 ALLOWED_HOSTS=$(aws ssm get-parameter --name "/forum/ALLOWED_HOSTS" --query "Parameter.Value" --output text --region $REGION)
 FRONTEND_BUCKET=$(aws ssm get-parameter --name "/forum/FRONTEND_BUCKET" --query "Parameter.Value" --output text --region $REGION)
 
-# ECR Repository URI (REPLACE THIS)
-ECR_URI="[TWOJE-ECR-URI]"  # Example: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/forum-backend
+# ECR Repository URI (REPLACE THIS WITH YOUR VALUE FROM AWS_IDs_TRACKER.md)
+ECR_URI="[AWS_IDs_TRACKER: ECR URI]"  # Example: 123456789012.dkr.ecr.eu-central-1.amazonaws.com/forum-backend
 
 # Login to ECR
 echo "Logging into ECR..."
@@ -550,16 +602,16 @@ echo "Deployment timestamp: $(date)"
 Kliknij **Next**
 
 **Step 2: Choose instance launch options**
-- **VPC:** Wybierz `forum-vpc`
+- **VPC:** Wybierz `forum-vpc` **[AWS_IDs_TRACKER: VPC ID]**
 - **Availability Zones and subnets:** Wybierz:
-  - `forum-private-subnet-1a`
-  - `forum-private-subnet-1b`
+  - `forum-private-subnet-1a` **[AWS_IDs_TRACKER: Private Subnet 1 (1a)]**
+  - `forum-private-subnet-1b` **[AWS_IDs_TRACKER: Private Subnet 2 (1b)]**
 
 Kliknij **Next**
 
 **Step 3: Configure advanced options**
 - **Load balancing:** Attach to an existing load balancer
-- **Choose from your load balancer target groups:** Wybierz `forum-tg`
+- **Choose from your load balancer target groups:** Wybierz `forum-tg` **[AWS_IDs_TRACKER: Target Group Name]**
 - **Health checks:**
   - **Health check type:** ELB
   - **Health check grace period:** `300` seconds
@@ -693,29 +745,32 @@ docker exec -it forum-backend python manage.py seed_data
 
 ### 8.1. Sprawdź ALB DNS
 
+**📋 Użyj ALB DNS z AWS_IDs_TRACKER.md sekcja "LOAD BALANCER"**
+
 1. Idź do **EC2** → **Load Balancers**
 2. Kliknij na `forum-alb`
 3. Skopiuj **DNS name** (np. `forum-alb-123.eu-central-1.elb.amazonaws.com`)
+4. **Sprawdź czy to się zgadza z wartością w AWS_IDs_TRACKER.md**
 
 ### 8.2. Test w przeglądarce
 
 **Otwórz przeglądarkę i wejdź na:**
 ```
-http://[ALB-DNS-NAME]
+http://[AWS_IDs_TRACKER: ALB DNS]
 ```
 
 Powinieneś zobaczyć **stronę React (Frontend)**!
 
 **Test health check:**
 ```
-http://[ALB-DNS-NAME]/health
+http://[AWS_IDs_TRACKER: ALB DNS]/health
 ```
 
 Powinno pokazać: `healthy`
 
 **Test API:**
 ```
-http://[ALB-DNS-NAME]/api/categories/
+http://[AWS_IDs_TRACKER: ALB DNS]/api/categories/
 ```
 
 Powinno pokazać JSON z kategoriami.
@@ -739,6 +794,8 @@ Powinno pokazać JSON z kategoriami.
 
 ### 9.1. Dodaj domenę do Cloudflare
 
+**📋 Zapisz domenę i dane Cloudflare w AWS_IDs_TRACKER.md sekcja "CLOUDFLARE"**
+
 1. Idź na: https://dash.cloudflare.com/
 2. Zaloguj się
 3. Kliknij: **Add a Site**
@@ -759,13 +816,15 @@ Cloudflare pokaże 2 nameservery (np. `alice.ns.cloudflare.com`, `bob.ns.cloudfl
 
 ### 9.3. Dodaj DNS Record
 
+**📋 Użyj ALB DNS z AWS_IDs_TRACKER.md sekcja "LOAD BALANCER"**
+
 1. W Cloudflare, idź do zakładki: **DNS** → **Records**
 2. Kliknij: **Add record**
 
 **Record 1: Root domain**
 - **Type:** CNAME
 - **Name:** `@` (oznacza root domain)
-- **Target:** Wklej ALB DNS name (np. `forum-alb-123.eu-central-1.elb.amazonaws.com`)
+- **Target:** `[AWS_IDs_TRACKER: ALB DNS]` (np. `forum-alb-123.eu-central-1.elb.amazonaws.com`)
 - **Proxy status:** Proxied (pomarańczowa chmurka) ⚠️ WAŻNE!
 - **TTL:** Auto
 
@@ -774,11 +833,13 @@ Kliknij **Save**
 **Record 2: WWW subdomain**
 - **Type:** CNAME
 - **Name:** `www`
-- **Target:** Wklej ALB DNS name
+- **Target:** `[AWS_IDs_TRACKER: ALB DNS]`
 - **Proxy status:** Proxied
 - **TTL:** Auto
 
 Kliknij **Save**
+
+**💾 Zapisz te rekordy w AWS_IDs_TRACKER.md sekcja "CLOUDFLARE"**
 
 ### 9.4. Konfiguracja SSL/TLS
 
@@ -799,8 +860,9 @@ Kliknij **Save**
 
 **Poczekaj 5-10 minut, potem wejdź na:**
 ```
-https://mojeforum.tk
+https://[AWS_IDs_TRACKER: Domain]
 ```
+**Użyj domeny z AWS_IDs_TRACKER.md sekcja "CLOUDFLARE"**
 
 Powinieneś zobaczyć:
 - ✅ Stronę Forum (React)
@@ -821,7 +883,13 @@ Teraz dodaj swoją domenę do ALLOWED_HOSTS.
 3. Kliknij: **Edit**
 4. **Value:** Dodaj swoją domenę:
    ```
-   mojeforum.tk,www.mojeforum.tk,[ALB-DNS],localhost,127.0.0.1
+   [AWS_IDs_TRACKER: Domain],www.[AWS_IDs_TRACKER: Domain],[AWS_IDs_TRACKER: ALB DNS],localhost,127.0.0.1
+   ```
+   **📋 Użyj wartości z AWS_IDs_TRACKER.md**
+   
+   **Przykład:**
+   ```
+   mojeforum.tk,www.mojeforum.tk,forum-alb-123.eu-central-1.elb.amazonaws.com,localhost,127.0.0.1
    ```
 5. Kliknij **Save changes**
 
@@ -860,8 +928,10 @@ Teraz dodaj swoją domenę do ALLOWED_HOSTS.
 
 ## 🧪 Final Testing
 
+**📋 Użyj domeny z AWS_IDs_TRACKER.md sekcja "FINAL URLs"**
+
 ### Test 1: Frontend
-Wejdź na: `https://mojeforum.tk`
+Wejdź na: `https://[AWS_IDs_TRACKER: Domain]`
 - [ ] Widać stronę główną
 - [ ] Widać kategorie
 
@@ -876,8 +946,8 @@ Wejdź na: `https://mojeforum.tk`
 - [ ] Sprawdź profil
 
 ### Test 4: Admin Panel
-Wejdź na: `https://mojeforum.tk/admin`
-- [ ] Zaloguj się (superuser z KROK 7)
+Wejdź na: `https://[AWS_IDs_TRACKER: Domain]/admin`
+- [ ] Zaloguj się (superuser z KROK 7 - zapisz w AWS_IDs_TRACKER.md sekcja "CREDENTIALS FOR DEMO")
 - [ ] Sprawdź użytkowników, kategorie
 
 **Wszystko działa? GRATULACJE! 🎊**
@@ -888,20 +958,22 @@ Wejdź na: `https://mojeforum.tk/admin`
 
 ### 11.1. Setup GitHub Secrets
 
+**📋 Użyj wartości z AWS_IDs_TRACKER.md**
+
 1. Idź na GitHub: https://github.com/tomisworking/webapp
 2. **Settings** → **Secrets and variables** → **Actions**
 3. Kliknij: **New repository secret**
 
 **Dodaj secrets:**
 
-| Name | Value |
-|------|-------|
-| `AWS_ACCESS_KEY_ID` | Twój AWS Access Key |
-| `AWS_SECRET_ACCESS_KEY` | Twój AWS Secret Key |
-| `AWS_REGION` | `eu-central-1` |
-| `ECR_REPOSITORY` | `forum-backend` |
-| `S3_BUCKET` | Nazwa Twojego S3 bucket |
-| `ASG_NAME` | `forum-asg` |
+| Name | Value | Gdzie znaleźć w AWS_IDs_TRACKER.md |
+|------|-------|-----------------------------------|
+| `AWS_ACCESS_KEY_ID` | `[AWS_IDs_TRACKER: Access Key ID]` | Sekcja "AWS CREDENTIALS" |
+| `AWS_SECRET_ACCESS_KEY` | `[AWS_IDs_TRACKER: Secret Access Key]` | Sekcja "AWS CREDENTIALS" |
+| `AWS_REGION` | `eu-central-1` | Sekcja "AWS CREDENTIALS" |
+| `ECR_REPOSITORY` | `forum-backend` | Sekcja "ECR REPOSITORY" |
+| `S3_BUCKET` | `[AWS_IDs_TRACKER: S3 Bucket]` | Sekcja "SECRETS (Parameter Store)" |
+| `ASG_NAME` | `forum-asg` | Sekcja "AUTO SCALING" |
 
 ### 11.2. Utwórz GitHub Actions Workflow
 
@@ -1014,7 +1086,7 @@ Teraz każdy push na `main` będzie automatycznie deployował na AWS! 🚀
 - Poczekaj 2-3 minuty na health checks
 
 ### "React nie ładuje się"
-- Sprawdź czy pliki są w S3: `aws s3 ls s3://[BUCKET]/latest/`
+- Sprawdź czy pliki są w S3: `aws s3 ls s3://[AWS_IDs_TRACKER: S3 Bucket]/latest/`
 - Sprawdź `/var/www/frontend/` na EC2
 - Sprawdź Nginx config: `sudo nginx -t`
 
@@ -1026,7 +1098,7 @@ Teraz każdy push na `main` będzie automatycznie deployował na AWS! 🚀
 ### "Database connection refused"
 - Sprawdź Security Group RDS (port 5432 z EC2 SG)
 - Sprawdź czy RDS jest w tych samych subnets co DB Subnet Group
-- Ping RDS endpoint z EC2: `telnet [RDS-ENDPOINT] 5432`
+- Ping RDS endpoint z EC2: `telnet [AWS_IDs_TRACKER: DB Endpoint] 5432`
 
 ---
 
@@ -1060,6 +1132,38 @@ aws rds start-db-instance --db-instance-identifier forum-db
 
 ---
 
+## 📝 OSTATNI KROK: Zapisz Wszystko!
+
+### ⚠️ KRYTYCZNE: Wypełnij AWS_IDs_TRACKER.md
+
+Przed zakończeniem, upewnij się że zapisałeś WSZYSTKIE wartości w `AWS_IDs_TRACKER.md`:
+
+**✅ Checklist - Co powinno być zapisane:**
+- [ ] AWS Account ID i Region
+- [ ] VPC ID, Subnet IDs
+- [ ] Security Group IDs (ALB, EC2, RDS)
+- [ ] RDS Endpoint i Master Password
+- [ ] ECR URI
+- [ ] ALB DNS Name
+- [ ] Launch Template ID
+- [ ] EC2 Instance IDs i Private IPs
+- [ ] IAM Role ARNs
+- [ ] Django SECRET_KEY (backup)
+- [ ] Cloudflare Domain i Nameservers
+- [ ] Django Admin credentials
+- [ ] Final URLs (Backend API, Admin Panel, Frontend)
+
+**Dlaczego to ważne?**
+- 🔐 Bezpieczeństwo: Hasła i klucze w jednym miejscu
+- 🚀 Deployment: Wszystkie ID potrzebne do CI/CD
+- 🆘 Troubleshooting: Szybki dostęp do endpointów
+- 👥 Zespół: Inni mogą przejąć deployment
+- 📊 Prezentacja: Wszystko gotowe do pokazania
+
+**🎯 Akcja:** Otwórz `AWS_IDs_TRACKER.md` i wypełnij wszystkie puste pola!
+
+---
+
 ## 🎊 GRATULACJE!
 
 **Twoja aplikacja jest live na AWS z:**
@@ -1078,5 +1182,32 @@ aws rds start-db-instance --db-instance-identifier forum-db
 - Performance tuning
 
 **Powodzenia! 🚀**
+
+---
+
+## 📚 QUICK REFERENCE: AWS_IDs_TRACKER.md Mapping
+
+Szybka ściągawka gdzie szukać wartości w `AWS_IDs_TRACKER.md`:
+
+| Potrzebujesz | Sekcja w AWS_IDs_TRACKER.md | Pole |
+|--------------|----------------------------|------|
+| ECR URI | 📦 ECR REPOSITORY | ECR URI |
+| ALB DNS | ⚖️ LOAD BALANCER | ALB DNS |
+| RDS Endpoint | 🗄️ RDS POSTGRESQL | DB Endpoint |
+| RDS Password | 🗄️ RDS POSTGRESQL | Master Password |
+| VPC ID | 🌐 VPC & NETWORKING | VPC ID |
+| Private Subnets | 🌐 VPC & NETWORKING | PRIVATE SUBNETS |
+| EC2 Security Group | 🔒 SECURITY GROUPS | EC2 Security Group |
+| Target Group | ⚖️ LOAD BALANCER | Target Group Name |
+| IAM Role | 🔐 IAM ROLES | Instance Profile Name |
+| S3 Bucket | 🔑 SECRETS (Parameter Store) | /forum/FRONTEND_BUCKET |
+| Domain | 🌍 CLOUDFLARE | Domain |
+| AWS Credentials | 🔐 AWS CREDENTIALS | Access Key ID, Secret |
+
+**💡 Pro Tip:** Ctrl+F (lub Cmd+F) w `AWS_IDs_TRACKER.md` żeby szybko znaleźć potrzebną wartość!
+
+---
+
+**KONIEC DAY 2 DEPLOYMENT GUIDE**
 
 
