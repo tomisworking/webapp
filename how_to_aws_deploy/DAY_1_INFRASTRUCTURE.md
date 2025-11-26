@@ -27,8 +27,8 @@
 ## 📋 Przed Rozpoczęciem
 
 1. **Zaloguj się do AWS Console:**
-   - Idź na: https://console.aws.amazon.com/
-   - Zaloguj się swoim kontem
+   - Idź na: https://aws.amazon.com/free
+   - Załóż konto
 
 2. **Wybierz region:**
    - W prawym górnym rogu (obok nazwy użytkownika)
