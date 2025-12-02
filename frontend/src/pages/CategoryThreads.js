@@ -14,6 +14,7 @@ const CategoryThreads = () => {
 
   useEffect(() => {
     loadCategoryThreads();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
   const loadCategoryThreads = async () => {

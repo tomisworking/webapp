@@ -23,7 +23,7 @@ export const authService = {
 
   // Login user
   login: async (email, password) => {
-    const response = await api.post(`${AUTH_API}/login/`, {
+    await api.post(`${AUTH_API}/login/`, {
       email,
       password,
     });

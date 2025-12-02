@@ -20,12 +20,15 @@ def set_auth_cookies(response, access_token, refresh_token=None):
     """
     Helper function to set httpOnly cookies for JWT tokens.
     """
+    # Get cookie secure flag from settings (allows HTTP through ALB)
+    cookie_secure = getattr(settings, 'COOKIE_SECURE', not settings.DEBUG)
+    
     # Set access token cookie
     response.set_cookie(
         key='access_token',
         value=access_token,
         max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
-        secure=not settings.DEBUG,  # True in production (HTTPS only)
+        secure=cookie_secure,  # Controlled by COOKIE_SECURE env var
         httponly=True,  # Not accessible via JavaScript
         samesite='Lax'  # CSRF protection
     )
@@ -36,7 +39,7 @@ def set_auth_cookies(response, access_token, refresh_token=None):
             key='refresh_token',
             value=refresh_token,
             max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
-            secure=not settings.DEBUG,
+            secure=cookie_secure,
             httponly=True,
             samesite='Lax'
         )
@@ -95,11 +98,12 @@ class CookieTokenRefreshView(TokenRefreshView):
             
             # If rotation is enabled, set new refresh token
             if 'refresh' in response.data:
+                cookie_secure = getattr(settings, 'COOKIE_SECURE', not settings.DEBUG)
                 response.set_cookie(
                     key='refresh_token',
                     value=response.data['refresh'],
                     max_age=int(settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()),
-                    secure=not settings.DEBUG,
+                    secure=cookie_secure,
                     httponly=True,
                     samesite='Lax'
                 )
