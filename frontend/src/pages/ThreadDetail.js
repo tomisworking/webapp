@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 
 const ThreadDetail = () => {
   const { id } = useParams();
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -17,6 +17,7 @@ const ThreadDetail = () => {
 
   useEffect(() => {
     loadThreadWithPosts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const loadThreadWithPosts = async () => {

@@ -178,14 +178,17 @@ CSRF_TRUSTED_ORIGINS = env_config(
     default='http://localhost:3000,http://127.0.0.1:3000'
 ).split(',')
 
+# Cookie Secure flag - set to False for HTTP through ALB (before Cloudflare HTTPS)
+COOKIE_SECURE = env_config('COOKIE_SECURE', default='True' if not DEBUG else 'False', cast=bool)
+
 # ============================================
 # PRODUCTION SECURITY SETTINGS
 # ============================================
 if not DEBUG:
     # HTTPS/SSL
     SECURE_SSL_REDIRECT = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = COOKIE_SECURE
+    CSRF_COOKIE_SECURE = COOKIE_SECURE
     
     # Security Headers
     SECURE_HSTS_SECONDS = 31536000  # 1 year
@@ -205,6 +208,11 @@ if not DEBUG:
 # ============================================
 # LOGGING CONFIGURATION
 # ============================================
+# Utwórz katalog logs jeśli nie istnieje (dla file handler w produkcji)
+LOGS_DIR = BASE_DIR / 'logs'
+if not LOGS_DIR.exists():
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -219,11 +227,6 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'verbose',
         },
-        'file': {
-            'class': 'logging.FileHandler',
-            'filename': BASE_DIR / 'logs' / 'django.log',
-            'formatter': 'verbose',
-        },
     },
     'root': {
         'handlers': ['console'],
@@ -231,14 +234,24 @@ LOGGING = {
     },
     'loggers': {
         'django': {
-            'handlers': ['console', 'file'] if not DEBUG else ['console'],
+            'handlers': ['console'],
             'level': 'INFO',
             'propagate': False,
         },
         'django.request': {
-            'handlers': ['console', 'file'] if not DEBUG else ['console'],
+            'handlers': ['console'],
             'level': 'ERROR',
             'propagate': False,
         },
     },
 }
+
+# Dodaj file handler tylko w produkcji (gdy DEBUG=False)
+if not DEBUG:
+    LOGGING['handlers']['file'] = {
+        'class': 'logging.FileHandler',
+        'filename': LOGS_DIR / 'django.log',
+        'formatter': 'verbose',
+    }
+    LOGGING['loggers']['django']['handlers'].append('file')
+    LOGGING['loggers']['django.request']['handlers'].append('file')
