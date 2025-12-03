@@ -13,11 +13,12 @@ permissions:
   contents: read    # Wymagane do checkout kodu
 
 env:
-  AWS_REGION: eu-central-1
+  AWS_REGION: us-east-1
   ECR_REPOSITORY_BACKEND: forum-backend
-  S3_BUCKET_FRONTEND: forum-frontend-builds  # Zmień na swoją nazwę bucket jeśli inna
+  S3_BUCKET_FRONTEND: forum-frontend-builds-kongoapp
   ASG_NAME: forum-asg
   LAUNCH_TEMPLATE_NAME: forum-lt
+  ALB_DNS: forum-alb-1684129147.us-east-1.elb.amazonaws.com
 
 jobs:
   # ============================================
@@ -192,7 +193,7 @@ jobs:
       - name: Pobierz ALB DNS z Parameter Store
         id: get-alb-dns
         run: |
-          ALB_DNS=$(aws ssm get-parameter --name "/forum/ALB_DNS" --query 'Parameter.Value' --output text 2>/dev/null || echo "kongoapp.pl")
+          ALB_DNS=$(aws ssm get-parameter --name "/forum/ALB_DNS" --query 'Parameter.Value' --output text 2>/dev/null || echo "${{ env.ALB_DNS }}")
           echo "ALB_DNS=$ALB_DNS" >> $GITHUB_OUTPUT
           echo "Using ALB DNS: $ALB_DNS"
       
