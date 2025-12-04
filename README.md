@@ -2,28 +2,9 @@
 
 A complete discussion forum web application built with Django REST Framework and React.
 
----
 
-## 🚀 AWS DEPLOYMENT - START HERE!
 
-**Dla Teammateów:** Instrukcje wdrożenia aplikacji na AWS znajdują się w folderze **[`how_to_aws_deploy/`](how_to_aws_deploy/)**
-
-### 📂 Struktura Deployment Documentation:
-
-| Plik | Opis |
-|------|------|
-| **[how_to_aws_deploy/README.md](how_to_aws_deploy/README.md)** | Przegląd architektury, wymagania, plan wdrożenia |
-| **[how_to_aws_deploy/DAY_1_INFRASTRUCTURE.md](how_to_aws_deploy/DAY_1_INFRASTRUCTURE.md)** | Dzień 1: Setup infrastruktury AWS (VPC, RDS, ALB, Security Groups) |
-| **[how_to_aws_deploy/DAY_2_DEPLOYMENT.md](how_to_aws_deploy/DAY_2_DEPLOYMENT.md)** | Dzień 2: Deployment aplikacji (Docker, ASG, migracje, Cloudflare) |
-| **[how_to_aws_deploy/QUICK_REFERENCE.md](how_to_aws_deploy/QUICK_REFERENCE.md)** | Cheatsheet - szybkie komendy AWS CLI |
-| **[AWS_IDs_TRACKER.md](AWS_IDs_TRACKER.md)** | Notatnik na ID zasobów AWS (wypełnijcie w trakcie) |
-
-### ⚡ Quick Start Deployment:
-1. **Przeczytaj:** [`how_to_aws_deploy/README.md`](how_to_aws_deploy/README.md) - 10 min
-2. **Dzień 1 (3-4h):** [`how_to_aws_deploy/DAY_1_INFRASTRUCTURE.md`](how_to_aws_deploy/DAY_1_INFRASTRUCTURE.md) - Setup infrastruktury
-3. **Dzień 2 (3-4h):** [`how_to_aws_deploy/DAY_2_DEPLOYMENT.md`](how_to_aws_deploy/DAY_2_DEPLOYMENT.md) - Deployment aplikacji
-
-### 🏗️ Architektura AWS (zgodnie z L3):
+### Architektura AWS:
 ```
 Cloudflare (DNS, SSL/TLS, WAF, CDN, DDoS Protection)
     ↓
@@ -37,17 +18,17 @@ Auto Scaling Group: 2-4x EC2 t2.micro (private subnets)
 RDS PostgreSQL t4g.micro (private subnet, izolowana)
 ```
 
-**💰 Koszty:** ~$0-8/miesiąc w Free Tier (12 miesięcy), ~$56/mies po Free Tier
+** Koszty:** ~$0-8/miesiąc w Free Tier (12 miesięcy), ~$56/mies po Free Tier
 
-**⏰ Czas wdrożenia:** 2 dni (6-8 godzin total)
+** Czas wdrożenia:** 2 dni (6-8 godzin total)
 
 ---
 
-## 🎯 Project Overview
+## Project Overview
 
 This is a full-stack forum application with user authentication, categories, threads, and posts. Users can register, create discussion threads, and reply to existing threads. The application follows RESTful API architecture with JWT token-based authentication.
 
-## 🛠 Tech Stack
+## Tech Stack
 
 ### Backend
 - **Framework**: Django 4.2+ with Django REST Framework
@@ -61,7 +42,7 @@ This is a full-stack forum application with user authentication, categories, thr
 - **HTTP Client**: Axios
 - **Styling**: Custom CSS with responsive design
 
-## ✨ Features
+## Features
 
 ### Implemented (Phase L1)
 ✅ User registration with email validation  
@@ -79,7 +60,7 @@ This is a full-stack forum application with user authentication, categories, thr
 ✅ Pin and lock threads functionality  
 ✅ Automatic token refresh  
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 forum-project/
@@ -137,7 +118,7 @@ forum-project/
     └── .env.example
 ```
 
-## 🚀 Setup Instructions
+## Setup Instructions
 
 ### Prerequisites
 - Python 3.8+
@@ -230,7 +211,7 @@ forum-project/
    ```
    Frontend will be available at `http://localhost:3000`
 
-## 📚 API Endpoints
+## API Endpoints
 
 ### Authentication Endpoints
 
@@ -275,7 +256,7 @@ forum-project/
 | PATCH | `/api/posts/{id}/` | Update post | Yes (author) |
 | DELETE | `/api/posts/{id}/` | Delete post | Yes (author) |
 
-## 🧪 Test Credentials
+## Test Credentials
 
 After running `seed_data` command, you can use these test accounts:
 
@@ -287,7 +268,7 @@ After running `seed_data` command, you can use these test accounts:
 | diana@example.com | diana | password123 |
 | eve@example.com | eve | password123 |
 
-## 🎨 Frontend Pages
+## Frontend Pages
 
 - **Home** (`/`) - Categories list
 - **Login** (`/login`) - User login form
@@ -297,7 +278,7 @@ After running `seed_data` command, you can use these test accounts:
 - **New Thread** (`/threads/new`) - Create thread form (protected)
 - **Profile** (`/profile`) - User profile with threads/posts (protected)
 
-## 🔒 Security Features
+## Security Features
 
 - Password hashing using Django's default PBKDF2
 - JWT token authentication with auto-refresh
@@ -308,14 +289,14 @@ After running `seed_data` command, you can use these test accounts:
 - Protected routes requiring authentication
 - Author-only permissions for edit/delete
 
-## 📱 Responsive Design
+## Responsive Design
 
 The application is fully responsive and works on:
 - Desktop (1200px+)
 - Tablet (768px - 1199px)
 - Mobile (below 768px)
 
-## 🐛 Debugging
+## Debugging
 
 ### Backend Issues
 
@@ -349,7 +330,7 @@ The application is fully responsive and works on:
    localStorage.clear()
    ```
 
-## 📝 Environment Variables
+## Environment Variables
 
 ### Backend (.env)
 ```
@@ -364,43 +345,3 @@ CORS_ALLOWED_ORIGINS=http://localhost:3000
 REACT_APP_API_URL=http://localhost:8000/api
 ```
 
-## 🚧 Known Limitations (Phase L1)
-
-- No search functionality yet
-- No post upvote/downvote system
-- No user avatars (shows initials)
-- No rich text editor (plain text only)
-- No email notifications
-- No user reputation system
-- SQLite database (not production-ready)
-
-## 🔄 Future Enhancements (Phase L2+)
-
-- Full-text search across threads and posts
-- Rich text editor (Markdown or WYSIWYG)
-- User reputation and badges
-- Post voting system
-- Email notifications
-- User avatar uploads
-- Thread bookmarking
-- Advanced filtering and sorting
-- Real-time updates with WebSockets
-- PostgreSQL for production
-- Docker containerization
-- CI/CD pipeline
-
-## 📞 Support
-
-If you encounter issues:
-1. Check the console/terminal for error messages
-2. Verify all dependencies are installed
-3. Ensure both backend and frontend servers are running
-4. Check that ports 8000 and 3000 are available
-
-## 📄 License
-
-This is a learning project for educational purposes.
-
----
-
-**Built with ❤️ using Django and React**
