@@ -1,0 +1,207 @@
+#!/bin/bash
+set -e
+
+# Logging
+exec > >(tee /var/log/user-data.log)
+exec 2>&1
+
+echo "===== Forum EC2 Setup Started ====="
+echo "Timestamp: $(date)"
+
+# Update system
+echo "Updating system packages..."
+yum update -y
+
+# Install Docker
+echo "Installing Docker..."
+yum install -y docker
+systemctl start docker
+systemctl enable docker
+usermod -a -G docker ec2-user
+
+# Install AWS CLI v2 (if not present)
+if ! command -v aws &> /dev/null; then
+    echo "Installing AWS CLI..."
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip"
+    cd /tmp
+    unzip awscliv2.zip
+    ./aws/install
+fi
+
+# Install Nginx
+echo "Installing Nginx..."
+yum install -y nginx
+systemctl enable nginx
+
+# Get configuration from Parameter Store
+echo "Fetching configuration from Parameter Store..."
+REGION="us-east-1"
+SECRET_KEY=$(aws ssm get-parameter --name "/forum/SECRET_KEY" --with-decryption --query "Parameter.Value" --output text --region $REGION)
+DATABASE_URL=$(aws ssm get-parameter --name "/forum/DATABASE_URL" --with-decryption --query "Parameter.Value" --output text --region $REGION)
+ALLOWED_HOSTS=$(aws ssm get-parameter --name "/forum/ALLOWED_HOSTS" --query "Parameter.Value" --output text --region $REGION)
+FRONTEND_BUCKET=$(aws ssm get-parameter --name "/forum/FRONTEND_BUCKET" --query "Parameter.Value" --output text --region $REGION)
+
+# ECR Repository URI - TWOJE WARTOŚCI JUŻ WYPEŁNIONE ✅
+ECR_URI="311603531332.dkr.ecr.us-east-1.amazonaws.com/forum-backend"
+
+# Login to ECR
+echo "Logging into ECR..."
+aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin ${ECR_URI%%/*}
+
+# Pull Django Docker image
+echo "Pulling Django Docker image..."
+docker pull ${ECR_URI}:latest
+
+# Run Django container
+echo "Starting Django container..."
+
+# Extract ALB DNS from ALLOWED_HOSTS (first element before comma)
+ALB_DNS=$(echo ${ALLOWED_HOSTS} | cut -d',' -f1)
+
+# CORS_ALLOWED_ORIGINS: Include both ALB DNS and domain (for Cloudflare with/without proxy)
+# This allows requests from both direct ALB access and domain access
+# Include both HTTP and HTTPS versions (Cloudflare proxy automatically uses HTTPS)
+CORS_ORIGINS="http://${ALB_DNS},http://kongoapp.pl,http://www.kongoapp.pl,https://kongoapp.pl,https://www.kongoapp.pl"
+
+docker run -d \
+  --name forum-backend \
+  --restart always \
+  -p 8000:8000 \
+  -e SECRET_KEY="$SECRET_KEY" \
+  -e DATABASE_URL="$DATABASE_URL" \
+  -e ALLOWED_HOSTS="$ALLOWED_HOSTS" \
+  -e DEBUG="False" \
+  -e CORS_ALLOWED_ORIGINS="$CORS_ORIGINS" \
+  -e COOKIE_SECURE="False" \
+  ${ECR_URI}:latest
+
+# Wait for Django to start
+echo "Waiting for Django to start..."
+sleep 10
+
+# Download React build from S3
+echo "Downloading React frontend from S3..."
+mkdir -p /var/www/frontend
+aws s3 sync s3://${FRONTEND_BUCKET}/latest/ /var/www/frontend/ --delete
+
+# Configure Nginx
+echo "Configuring Nginx..."
+cat > /etc/nginx/conf.d/forum.conf << 'EOF_NGINX'
+upstream django {
+    server 127.0.0.1:8000;
+}
+
+server {
+    listen 80 default_server;
+    server_name _;
+    
+    root /var/www/frontend;
+    index index.html;
+
+    client_max_body_size 10M;
+    client_body_buffer_size 128k;
+
+    # Health check for ALB
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+
+    # Django health check
+    location /api/health/ {
+        proxy_pass http://django;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 30s;
+    }
+
+    # API requests → Django
+    location /api/ {
+        proxy_pass http://django;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Django admin
+    location /admin {
+        proxy_pass http://django;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    # Django static files
+    location /static/ {
+        proxy_pass http://django;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Django media files
+    location /media/ {
+        proxy_pass http://django;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+
+    # React frontend
+    location / {
+        try_files $uri $uri/ /index.html;
+        expires 1h;
+        add_header Cache-Control "public, must-revalidate";
+    }
+
+    # React static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # Security headers
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    location ~ /\. {
+        deny all;
+        access_log off;
+        log_not_found off;
+    }
+}
+EOF_NGINX
+
+# Remove default Nginx config
+rm -f /etc/nginx/nginx.conf.default
+rm -f /etc/nginx/conf.d/default.conf
+
+# Start Nginx
+echo "Starting Nginx..."
+systemctl restart nginx
+
+echo "===== Setup Complete ====="
+echo "Services status:"
+echo "  - Docker: $(systemctl is-active docker)"
+echo "  - Nginx: $(systemctl is-active nginx)"
+echo "  - Django container: $(docker ps --filter name=forum-backend --format '{{.Status}}')"
+echo ""
+echo "Logs:"
+echo "  - This script: /var/log/user-data.log"
+echo "  - Nginx: /var/log/nginx/error.log"
+echo "  - Django: docker logs forum-backend"
+echo ""
+echo "Deployment timestamp: $(date)"
