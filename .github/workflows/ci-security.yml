@@ -1,0 +1,95 @@
+name: CI - Security (Testy)
+
+on:
+  push:
+    branches: [ development ]
+  pull_request:
+    branches: [ development ]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      ################################################
+      # 1) Install dependencies (Python + JS)
+      ################################################
+
+      # Backend (Python/Django)
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      # Frontend (Node/React)
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+
+      - name: Install JS dependencies
+        run: |
+          if [ -f package.json ]; then npm install --ignore-scripts; fi
+
+
+
+      ################################################
+      # 2) SAST – Semgrep (Python + JavaScript rules)
+      ################################################
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      - name: Run Semgrep SAST
+        run: semgrep --config auto --error
+
+
+
+      ################################################
+      # 3) Secret Scanning – Gitleaks
+      ################################################
+      - name: Install Gitleaks
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks-linux-amd64 \
+            -o /usr/local/bin/gitleaks
+          chmod +x /usr/local/bin/gitleaks
+
+      - name: Run Gitleaks
+        run: gitleaks detect --redact --source .
+
+
+
+      ################################################
+      # 4) SCA – Trivy (Python + JS dependencies)
+      ################################################
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_linux_amd64.deb
+          sudo dpkg -i trivy_linux_amd64.deb
+
+      # SCA for whole repo (Python + React)
+      - name: Trivy filesystem scan
+        run: trivy fs --exit-code 1 --severity HIGH,CRITICAL .
+
+
+
+      ################################################
+      # 5) IaC scanning (Dockerfile, Terraform, K8s)
+      # Runs only if such files exist
+      ################################################
+      - name: Trivy IaC scan
+        run: |
+          if ls Dockerfile* 1> /dev/null 2>&1 || \
+             ls *.tf 1> /dev/null 2>&1 || \
+             ls k8s/*.yaml 1> /dev/null 2>&1; then
+              trivy config --exit-code 1 --severity HIGH,CRITICAL .
+          else
+              echo "No IaC files found, skipping IaC scan."
+          fi
