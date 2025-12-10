@@ -154,6 +154,9 @@ jobs:
 
       - name: Run OWASP ZAP API Scan
         run: |
+          # Upewnij się, że ZAP może zapisać raport
+          chmod -R a+w ${{ github.workspace }}
+          
           docker run --rm \
             -v ${{ github.workspace }}:/zap/wrk/:rw \
             --network=host \
