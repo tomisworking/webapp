@@ -125,7 +125,6 @@ jobs:
             -p 8000:8000 \
             -e DEBUG=True \
             -e SECRET_KEY=test-secret-key-for-ci \
-            -e DATABASE_URL=sqlite:///db.sqlite3 \
             -e ALLOWED_HOSTS=localhost,127.0.0.1 \
             webapp-backend:test
           
