@@ -43,7 +43,15 @@ jobs:
   # Passive scan (wait for results)
   - type: passiveScan-wait
     parameters:
-      maxDuration: 10
+      maxDuration: 5
+
+  # Active scan - tests for vulnerabilities (SQLi, XSS, etc.)
+  - type: activeScan
+    parameters:
+      context: "webapp-api"
+      maxRuleDurationInMins: 1
+      maxScanDurationInMins: 5
+      policy: ""
 
   # Generate reports
   - type: report
