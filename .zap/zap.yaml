@@ -1,0 +1,52 @@
+---
+env:
+  contexts:
+    - name: "webapp-api"
+      urls:
+        - "http://localhost:8000"
+      includePaths:
+        - "http://localhost:8000/api/.*"
+
+jobs:
+  # Spider the target first
+  - type: spider
+    parameters:
+      context: "webapp-api"
+      maxDuration: 2
+
+  # Add specific URLs from our list
+  - type: requestor
+    parameters:
+      user: ""
+    requests:
+      - url: "http://localhost:8000/api/health/"
+        method: "GET"
+      - url: "http://localhost:8000/api/categories/"
+        method: "GET"
+      - url: "http://localhost:8000/api/threads/"
+        method: "GET"
+      - url: "http://localhost:8000/api/posts/"
+        method: "GET"
+      - url: "http://localhost:8000/api/auth/register/"
+        method: "GET"
+      - url: "http://localhost:8000/api/auth/login/"
+        method: "GET"
+      - url: "http://localhost:8000/api/auth/refresh/"
+        method: "GET"
+
+  # Passive scan (wait for results)
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+
+  # Generate reports
+  - type: report
+    parameters:
+      template: "traditional-html"
+      reportDir: "/zap/wrk"
+      reportFile: "report_html.html"
+    risks:
+      - high
+      - medium
+      - low
+      - info
