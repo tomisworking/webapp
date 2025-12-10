@@ -129,10 +129,29 @@ jobs:
             -e ALLOWED_HOSTS=localhost,127.0.0.1 \
             webapp-backend:test
           
-          # Czekaj aż apka odpowiada
-          for i in {1..30}; do
-            curl -s http://localhost:8000/api/health/ && break || sleep 2
+          echo "Waiting for application to start..."
+          
+          # Czekaj aż apka odpowiada (max 90 sekund)
+          for i in {1..45}; do
+            if curl -sf http://localhost:8000/api/health/ > /dev/null 2>&1; then
+              echo "✅ Application is ready!"
+              exit 0
+            fi
+            
+            # Sprawdź czy kontener jeszcze żyje
+            if ! docker ps | grep -q webapp; then
+              echo "❌ Container crashed! Logs:"
+              docker logs webapp
+              exit 1
+            fi
+            
+            echo "Waiting... ($i/45)"
+            sleep 2
           done
+          
+          echo "❌ Application did not start in time. Container logs:"
+          docker logs webapp
+          exit 1
 
       - name: Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.14.0
