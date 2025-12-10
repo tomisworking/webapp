@@ -3,18 +3,12 @@ env:
   contexts:
     - name: "webapp-api"
       urls:
-        - "http://localhost:8000"
+        - "http://localhost:8000/api/"
       includePaths:
         - "http://localhost:8000/api/.*"
 
 jobs:
-  # Spider the target first
-  - type: spider
-    parameters:
-      context: "webapp-api"
-      maxDuration: 2
-
-  # Add specific URLs from our list
+  # Add specific URLs and scan them
   - type: requestor
     parameters:
       user: ""
@@ -33,11 +27,23 @@ jobs:
         method: "GET"
       - url: "http://localhost:8000/api/auth/refresh/"
         method: "GET"
+      - url: "http://localhost:8000/api/auth/register/"
+        method: "POST"
+        httpVersion: "HTTP/1.1"
+        headers:
+          - "Content-Type: application/json"
+        data: '{"username":"test","email":"test@test.com","password":"test123"}'
+      - url: "http://localhost:8000/api/auth/login/"
+        method: "POST"
+        httpVersion: "HTTP/1.1"
+        headers:
+          - "Content-Type: application/json"
+        data: '{"username":"test","password":"test123"}'
 
   # Passive scan (wait for results)
   - type: passiveScan-wait
     parameters:
-      maxDuration: 5
+      maxDuration: 10
 
   # Generate reports
   - type: report
