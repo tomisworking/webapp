@@ -1,10 +1,10 @@
-# Forum Application - Phase L1
+# Forum Application 
 
 A complete discussion forum web application built with Django REST Framework and React.
 
 
 
-### Architektura AWS:
+### AWS architecture:
 ```
 Cloudflare (DNS, SSL/TLS, WAF, CDN, DDoS Protection)
     ↓
@@ -18,9 +18,6 @@ Auto Scaling Group: 2-4x EC2 t2.micro (private subnets)
 RDS PostgreSQL t4g.micro (private subnet, izolowana)
 ```
 
-** Koszty:** ~$0-8/miesiąc w Free Tier (12 miesięcy), ~$56/mies po Free Tier
-
-** Czas wdrożenia:** 2 dni (6-8 godzin total)
 
 ---
 
@@ -44,7 +41,7 @@ This is a full-stack forum application with user authentication, categories, thr
 
 ## Features
 
-### Implemented (Phase L1)
+### Implemented 
 ✅ User registration with email validation  
 ✅ Login/logout with JWT authentication  
 ✅ Protected routes and endpoints  
