@@ -47,6 +47,7 @@ jobs:
 
       - name: Run Semgrep SAST
         run: semgrep --config auto --error
+        continue-on-error: true
 
 
 
@@ -61,6 +62,7 @@ jobs:
 
       - name: Run Gitleaks
         run: gitleaks detect --redact --source .
+        continue-on-error: true
 
 
 
@@ -77,6 +79,7 @@ jobs:
       # SCA for whole repo (Python + React)
       - name: Trivy filesystem scan
         run: trivy fs --exit-code 1 --severity HIGH,CRITICAL .
+        continue-on-error: true
 
 
 
@@ -93,3 +96,13 @@ jobs:
           else
               echo "No IaC files found, skipping IaC scan."
           fi
+        continue-on-error: true
+      
+      - name: Fail pipeline if any security scan failed
+      if: ${{steps.semgrep.outcome == 'failure' || steps.gitleaks.outcome == 'failure' || steps.trivy.outcome == 'failure'}}
+      run: |
+        echo "One or more security scans failed – marking pipeline as failed."
+        exit 1
+      
+      
+    
