@@ -84,9 +84,7 @@ jobs:
       ################################################
       - name: Trivy IaC scan
         run: |
-          if ls Dockerfile* 1> /dev/null 2>&1 || \
-             ls *.tf 1> /dev/null 2>&1 || \
-             ls k8s/*.yaml 1> /dev/null 2>&1; then
+          if find . -maxdepth 5 \( -name 'Dockerfile*' -o -name '*.tf' -o -name '*.yaml' \) | grep -q .; then
               trivy config --exit-code 1 --severity HIGH,CRITICAL .
           else
               echo "No IaC files found, skipping IaC scan."
