@@ -124,21 +124,21 @@ jobs:
           docker run -d --name webapp \
             -p 8000:8000 \
             -e DEBUG=True \
-            -e SECRET_KEY=test-secret-key \
+            -e SECRET_KEY=test-secret-key-for-ci \
             -e DATABASE_URL=sqlite:///db.sqlite3 \
+            -e ALLOWED_HOSTS=localhost,127.0.0.1 \
             webapp-backend:test
           
           # Czekaj aż apka odpowiada
           for i in {1..30}; do
-            curl -s http://localhost:8000/health/ && break || sleep 2
+            curl -s http://localhost:8000/api/health/ && break || sleep 2
           done
 
       - name: Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.14.0
         with:
           target: "http://localhost:8000"
-          rules_file_name: ".zap/rules.tsv"   # opcjonalnie, do ignorowania reguł
-          cmd_options: "-a"                    # ajax spider (opcjonalnie)
+          cmd_options: "-a"                    # ajax spider
 
       - name: Upload ZAP Report
         if: always()
