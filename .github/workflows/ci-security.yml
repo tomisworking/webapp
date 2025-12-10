@@ -55,15 +55,11 @@ jobs:
       ################################################
       # 3) Secret Scanning – Gitleaks
       ################################################
-      - name: Install Gitleaks
-        run: |
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks-linux-amd64 \
-            -o /usr/local/bin/gitleaks
-          chmod +x /usr/local/bin/gitleaks
-
       - name: Run Gitleaks
         id: gitleaks
-        run: gitleaks detect --redact --source .
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
 
@@ -72,11 +68,7 @@ jobs:
       # 4) SCA – Trivy (Python + JS dependencies)
       ################################################
       - name: Install Trivy
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget
-          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_linux_amd64.deb
-          sudo dpkg -i trivy_linux_amd64.deb
+        uses: aquasecurity/setup-trivy@v0.2.3
 
       # SCA for whole repo (Python + React)
       - name: Trivy filesystem scan
