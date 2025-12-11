@@ -1,0 +1,99 @@
+name: CI - Development (Security)
+
+on:
+  push:
+    branches: [ development ]
+  pull_request:
+    branches: [ development ]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      ################################################
+      # 1) Install dependencies (Python + JS)
+      ################################################
+
+      # Backend (Python/Django)
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      # Frontend (Node/React)
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
+
+      - name: Install JS dependencies
+        run: |
+          if [ -f package.json ]; then npm install --ignore-scripts; fi
+
+
+
+      ################################################
+      # 2) SAST – Semgrep (Python + JavaScript rules)
+      ################################################
+      - name: Install Semgrep
+        run: pip install semgrep
+
+      - name: Run Semgrep SAST
+        id: semgrep
+        run: semgrep --config auto --error
+        continue-on-error: true
+
+
+
+      ################################################
+      # 3) Secret Scanning – Gitleaks
+      ################################################
+      - name: Run Gitleaks
+        id: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+
+
+      ################################################
+      # 4) SCA – Trivy (Python + JS dependencies)
+      ################################################
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.3
+
+      # SCA for whole repo (Python + React)
+      - name: Trivy filesystem scan
+        id: trivy_fs
+        run: trivy fs --exit-code 1 --severity HIGH,CRITICAL .
+        continue-on-error: true
+
+
+
+      ################################################
+      # 5) IaC scanning (Dockerfile, Terraform, K8s)
+      # Runs only if such files exist
+      ################################################
+      - name: Trivy IaC scan
+        run: |
+          if find . -maxdepth 5 \( -name 'Dockerfile*' -o -name '*.tf' -o -name '*.yaml' \) | grep -q .; then
+              trivy config --exit-code 1 --severity HIGH,CRITICAL .
+          else
+              echo "No IaC files found, skipping IaC scan."
+          fi
+        continue-on-error: true
+        id: trivy_iac
+
+      - name: Fail pipeline if any security scan failed
+        if: ${{ steps.semgrep.outcome == 'failure' || steps.gitleaks.outcome == 'failure' || steps.trivy_fs.outcome == 'failure' || steps.trivy_iac.outcome == 'failure' }}
+        run: |
+          echo "One or more security scans failed – marking pipeline as failed."
+          exit 1
