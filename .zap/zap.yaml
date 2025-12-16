@@ -1,0 +1,66 @@
+---
+env:
+  contexts:
+    - name: "webapp-api"
+      urls:
+        - "http://localhost:8000/api/"
+      includePaths:
+        - "http://localhost:8000/api/.*"
+
+jobs:
+  # Add specific URLs and scan them
+  - type: requestor
+    parameters:
+      user: ""
+    requests:
+      - url: "http://localhost:8000/api/health/"
+        method: "GET"
+      - url: "http://localhost:8000/api/categories/"
+        method: "GET"
+      - url: "http://localhost:8000/api/threads/"
+        method: "GET"
+      - url: "http://localhost:8000/api/posts/"
+        method: "GET"
+      - url: "http://localhost:8000/api/auth/register/"
+        method: "GET"
+      - url: "http://localhost:8000/api/auth/login/"
+        method: "GET"
+      - url: "http://localhost:8000/api/auth/refresh/"
+        method: "GET"
+      - url: "http://localhost:8000/api/auth/register/"
+        method: "POST"
+        httpVersion: "HTTP/1.1"
+        headers:
+          - "Content-Type: application/json"
+        data: '{"username":"test","email":"test@test.com","password":"test123"}'
+      - url: "http://localhost:8000/api/auth/login/"
+        method: "POST"
+        httpVersion: "HTTP/1.1"
+        headers:
+          - "Content-Type: application/json"
+        data: '{"username":"test","password":"test123"}'
+
+  # Passive scan (wait for results)
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+
+  # Active scan - tests for vulnerabilities (SQLi, XSS, etc.)
+  - type: activeScan
+    parameters:
+      context: "webapp-api"
+      maxRuleDurationInMins: 1
+      maxScanDurationInMins: 5
+      policy: ""
+
+  # Generate reports
+  - type: report
+    parameters:
+      template: "traditional-html"
+      reportDir: "/zap/wrk"
+      reportFile: "report_html.html"
+    risks:
+      - high
+      - medium
+      - low
+      - info
