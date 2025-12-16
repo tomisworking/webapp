@@ -36,6 +36,8 @@ class Command(BaseCommand):
                 }
             )
             if created:
+                # nosemgrep: python.django.security.audit.unvalidated-password.unvalidated-password
+                # Test data with intentionally simple password for development/seeding
                 user.set_password('password123')
                 user.save()
                 self.stdout.write(f'  Created user: {user.username}')
