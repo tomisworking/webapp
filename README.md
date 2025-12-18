@@ -327,15 +327,6 @@ The application is fully responsive and works on:
    localStorage.clear()
    ```
 
-## Environment Variables
-
-### Backend (.env)
-```
-DEBUG=True
-SECRET_KEY=your-secret-key
-ALLOWED_HOSTS=localhost,127.0.0.1
-CORS_ALLOWED_ORIGINS=http://localhost:3000
-```
 
 ### Frontend (.env)
 ```
