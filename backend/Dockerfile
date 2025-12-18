@@ -40,6 +40,8 @@ COPY --from=builder /root/.local /home/django/.local
 
 # Copy application code
 COPY --chown=django:django . .
+RUN chmod +x /app/docker-entrypoint.sh
+
 
 # Set PATH for user-installed packages
 ENV PATH=/home/django/.local/bin:$PATH

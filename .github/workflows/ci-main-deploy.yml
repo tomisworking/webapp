@@ -1,0 +1,348 @@
+name: CD - Main (Deployment)
+
+on:
+  workflow_run:
+    workflows: 
+      - "CI - Main (Security)"
+      - "CI - Main (Testy)"
+    types:
+      - completed
+    branches: [ main ]
+
+permissions:
+  id-token: write   # Wymagane dla OIDC
+  contents: read    # Wymagane do checkout kodu
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY_BACKEND: forum-backend
+  S3_BUCKET_FRONTEND: forum-frontend-builds-kongoapp
+  ASG_NAME: forum-asg
+  LAUNCH_TEMPLATE_NAME: forum-lt
+  ALB_DNS: forum-alb-1684129147.us-east-1.elb.amazonaws.com
+
+jobs:
+  # ============================================
+  # SPRAWDŹ CZY WSZYSTKIE WORKFLOW PRZESZŁY
+  # ============================================
+  check-workflows:
+    name: Check Security & Tests Status
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+    
+    steps:
+      - name: Check if all required workflows passed
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const branch = 'main';
+            
+            // Pobierz ostatnie uruchomienia workflow
+            const securityRuns = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id: 'main-security.yml',
+              branch,
+              per_page: 1
+            });
+            
+            const testsRuns = await github.rest.actions.listWorkflowRuns({
+              owner,
+              repo,
+              workflow_id: 'main-tests.yml',
+              branch,
+              per_page: 1
+            });
+            
+            const securityPassed = securityRuns.data.workflow_runs[0]?.conclusion === 'success';
+            const testsPassed = testsRuns.data.workflow_runs[0]?.conclusion === 'success';
+            
+            console.log(`Security workflow: ${securityPassed ? '✅ passed' : '❌ failed'}`);
+            console.log(`Tests workflow: ${testsPassed ? '✅ passed' : '❌ failed'}`);
+            
+            if (securityPassed && testsPassed) {
+              core.setOutput('should_deploy', 'true');
+              console.log('✅ All workflows passed - proceeding with deployment');
+            } else {
+              core.setOutput('should_deploy', 'false');
+              core.setFailed('❌ Not all required workflows passed');
+            }
+
+  # ============================================
+  # BUILD I PUSH DOCKER DO ECR
+  # ============================================
+  build-and-push-backend:
+    name: Build & Push Backend to ECR
+    runs-on: ubuntu-latest
+    needs: check-workflows
+    if: needs.check-workflows.outputs.should_deploy == 'true'
+    
+    steps:
+      - name: Pobierz kod
+        uses: actions/checkout@v3
+      
+      - name: Konfiguruj AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::311603531332:role/GitHubActionsRole
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Logowanie do Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Build, tag i push obraz do ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY_BACKEND }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          cd backend
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
+      
+      - name: Output image URI
+        run: |
+          echo "✅ Backend image pushed: ${{ env.IMAGE_URI }}"
+
+  # ============================================
+  # BUILD REACT I UPLOAD DO S3
+  # ============================================
+  build-and-upload-frontend:
+    name: Build & Upload Frontend to S3
+    runs-on: ubuntu-latest
+    needs: check-workflows
+    if: needs.check-workflows.outputs.should_deploy == 'true'
+    
+    steps:
+      - name: Pobierz kod
+        uses: actions/checkout@v3
+      
+      - name: Konfiguruj AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::311603531332:role/GitHubActionsRole
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Ustaw Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Pobierz ALB DNS z Parameter Store
+        id: get-alb-dns
+        run: |
+          ALB_DNS=$(aws ssm get-parameter --name "/forum/ALB_DNS" --query 'Parameter.Value' --output text 2>/dev/null || echo "${{ env.ALB_DNS }}")
+          echo "ALB_DNS=$ALB_DNS" >> $GITHUB_OUTPUT
+          echo "Using ALB DNS: $ALB_DNS"
+      
+      - name: Utwórz .env.production
+        working-directory: ./frontend
+        run: |
+          echo "REACT_APP_API_URL=https://${{ steps.get-alb-dns.outputs.ALB_DNS }}/api" > .env.production
+          cat .env.production
+      
+      - name: Zainstaluj zależności
+        working-directory: ./frontend
+        run: npm ci
+      
+      - name: Buduj aplikację React
+        working-directory: ./frontend
+        run: npm run build
+      
+      - name: Sprawdź czy build się udał
+        working-directory: ./frontend
+        run: |
+          test -d build && echo "✅ Build successful!" || exit 1
+          echo "Build size: $(du -sh build | cut -f1)"
+      
+      - name: Sprawdź czy S3 bucket istnieje
+        run: |
+          if ! aws s3 ls "s3://${{ env.S3_BUCKET_FRONTEND }}" 2>&1 | grep -q 'NoSuchBucket'; then
+            echo "✅ Bucket exists"
+          else
+            echo "⚠️  Bucket doesn't exist, creating..."
+            aws s3 mb "s3://${{ env.S3_BUCKET_FRONTEND }}" --region ${{ env.AWS_REGION }}
+            aws s3api put-public-access-block \
+              --bucket ${{ env.S3_BUCKET_FRONTEND }} \
+              --public-access-block-configuration \
+              "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"
+          fi
+      
+      - name: Usuń poprzedni build z S3
+        run: |
+          echo "🗑️  Deleting old build from S3..."
+          aws s3 rm "s3://${{ env.S3_BUCKET_FRONTEND }}/latest/" --recursive || echo "No old build to delete"
+      
+      - name: Upload nowy build do S3
+        run: |
+          echo "📤 Uploading new build to S3..."
+          aws s3 sync frontend/build/ "s3://${{ env.S3_BUCKET_FRONTEND }}/latest/" \
+            --delete \
+            --region ${{ env.AWS_REGION }} \
+            --exclude ".DS_Store" \
+            --exclude "*.map"
+          echo "✅ Upload completed!"
+      
+      - name: Utwórz backup (opcjonalne)
+        run: |
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          aws s3 sync "s3://${{ env.S3_BUCKET_FRONTEND }}/latest/" "s3://${{ env.S3_BUCKET_FRONTEND }}/backups/$TIMESTAMP/" --region ${{ env.AWS_REGION }} || echo "Backup skipped"
+          echo "✅ Backup created: s3://${{ env.S3_BUCKET_FRONTEND }}/backups/$TIMESTAMP/"
+
+  # ============================================
+  # UPDATE LAUNCH TEMPLATE (jeśli potrzeba)
+  # ============================================
+  update-launch-template:
+    name: Update Launch Template
+    runs-on: ubuntu-latest
+    needs: [build-and-push-backend, build-and-upload-frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Pobierz kod
+        uses: actions/checkout@v3
+      
+      - name: Konfiguruj AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::311603531332:role/GitHubActionsRole
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Pobierz Account ID i ECR URI
+        id: get-ecr-info
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ECR_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${{ env.ECR_REPOSITORY_BACKEND }}"
+          echo "ECR_URI=$ECR_URI" >> $GITHUB_OUTPUT
+          echo "ECR URI: $ECR_URI"
+      
+      - name: Pobierz najnowszą wersję Launch Template
+        id: get-lt
+        run: |
+          LATEST_VERSION=$(aws ec2 describe-launch-template-versions \
+            --launch-template-name ${{ env.LAUNCH_TEMPLATE_NAME }} \
+            --query 'LaunchTemplateVersions[0].VersionNumber' \
+            --output text)
+          echo "LATEST_VERSION=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "Latest Launch Template version: $LATEST_VERSION"
+      
+      - name: Pobierz user-data z obecnej wersji
+        id: get-user-data
+        run: |
+          USER_DATA=$(aws ec2 describe-launch-template-versions \
+            --launch-template-name ${{ env.LAUNCH_TEMPLATE_NAME }} \
+            --versions ${{ steps.get-lt.outputs.LATEST_VERSION }} \
+            --query 'LaunchTemplateVersions[0].LaunchTemplateData.UserData' \
+            --output text | base64 -d)
+          echo "$USER_DATA" > /tmp/current-user-data.sh
+          echo "Current user-data retrieved"
+      
+      - name: Aktualizuj user-data z nowym ECR URI
+        run: |
+          sed -i "s|ECR_URI_PLACEHOLDER|${{ steps.get-ecr-info.outputs.ECR_URI }}|g" /tmp/current-user-data.sh
+          sed -i "s|AWS_ACCOUNT_ID_PLACEHOLDER|$(aws sts get-caller-identity --query Account --output text)|g" /tmp/current-user-data.sh
+          # Jeśli S3 bucket się zmienił, zaktualizuj też to
+          sed -i "s|FRONTEND_BUCKET_PLACEHOLDER|${{ env.S3_BUCKET_FRONTEND }}|g" /tmp/current-user-data.sh || true
+      
+      - name: Utwórz nową wersję Launch Template
+        run: |
+          USER_DATA_B64=$(base64 -w 0 < /tmp/current-user-data.sh)
+          NEW_VERSION=$(aws ec2 create-launch-template-version \
+            --launch-template-name ${{ env.LAUNCH_TEMPLATE_NAME }} \
+            --source-version ${{ steps.get-lt.outputs.LATEST_VERSION }} \
+            --launch-template-data "UserData=$USER_DATA_B64" \
+            --query 'LaunchTemplateVersion.VersionNumber' \
+            --output text)
+          echo "✅ New Launch Template version created: $NEW_VERSION"
+
+  # ============================================
+  # DEPLOY - RESTART ASG
+  # ============================================
+  deploy:
+    name: Deploy to EC2 (ASG Instance Refresh)
+    runs-on: ubuntu-latest
+    needs: [build-and-push-backend, build-and-upload-frontend, update-launch-template]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Konfiguruj AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::311603531332:role/GitHubActionsRole
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Sprawdź czy Instance Refresh już działa
+        id: check-refresh
+        run: |
+          REFRESH_STATUS=$(aws autoscaling describe-instance-refreshes \
+            --auto-scaling-group-name ${{ env.ASG_NAME }} \
+            --query 'InstanceRefreshes[0].Status' \
+            --output text 2>/dev/null || echo "None")
+          echo "Current refresh status: $REFRESH_STATUS"
+          if [ "$REFRESH_STATUS" = "InProgress" ]; then
+            echo "⚠️  Instance refresh already in progress, waiting..."
+            exit 0
+          fi
+      
+      - name: Uruchom Instance Refresh
+        run: |
+          echo "🚀 Starting instance refresh..."
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name ${{ env.ASG_NAME }} \
+            --preferences '{
+              "MinHealthyPercentage": 50,
+              "InstanceWarmup": 60,
+              "SkipMatching": false,
+              "ScaleInProtectedInstances": "Ignore",
+              "StandbyInstances": "Terminate"
+            }' || echo "Instance refresh may already be in progress"
+      
+      - name: Czekaj na rozpoczęcie refresh
+        run: |
+          echo "⏳ Waiting for instance refresh to start..."
+          sleep 30
+      
+      - name: Status deploymentu
+        run: |
+          echo "✅ Deployment initiated!"
+          echo "Backend image: ${{ needs.build-and-push-backend.outputs.IMAGE_URI || 'N/A' }}"
+          echo "Frontend S3: s3://${{ env.S3_BUCKET_FRONTEND }}/latest/"
+          echo "ASG: ${{ env.ASG_NAME }}"
+          echo ""
+          echo "Sprawdź status w AWS Console:"
+          echo "  - EC2 → Auto Scaling Groups → ${{ env.ASG_NAME }} → Activity tab"
+          echo "  - EC2 → Auto Scaling Groups → ${{ env.ASG_NAME }} → Instance refresh tab"
+
+  # ============================================
+  # NOTYFIKACJE (opcjonalne)
+  # ============================================
+  notify:
+    name: Deployment Status
+    runs-on: ubuntu-latest
+    needs: [check-workflows, build-and-push-backend, build-and-upload-frontend, deploy]
+    if: always()
+    
+    steps:
+      - name: Deployment status
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "✅ Deployment successful!"
+            echo "Backend: ${{ needs.build-and-push-backend.outputs.IMAGE_URI || 'N/A' }}"
+            echo "Frontend: s3://${{ env.S3_BUCKET_FRONTEND }}/latest/"
+          else
+            echo "❌ Deployment failed!"
+            exit 1
+          fi
+
+
+
