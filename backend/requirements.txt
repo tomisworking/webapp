@@ -10,6 +10,7 @@ setuptools>=65.0.0
 
 # PostgreSQL
 psycopg[binary]==3.1.19
+psycopg2-binary==2.9.9
 
 # Redis (optional - for future)
 redis==5.0.1
