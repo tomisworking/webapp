@@ -9,7 +9,7 @@ Pillow==10.4.0
 setuptools>=65.0.0
 
 # PostgreSQL
-psycopg2-binary==3.1.19
+psycopg[binary]==3.1.19
 
 # Redis (optional - for future)
 redis==5.0.1
