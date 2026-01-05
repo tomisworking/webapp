@@ -194,8 +194,8 @@ COOKIE_SECURE = env_config('COOKIE_SECURE', default='True' if not DEBUG else 'Fa
 # PRODUCTION SECURITY SETTINGS
 # ============================================
 if not DEBUG:
-    # HTTPS/SSL
-    SECURE_SSL_REDIRECT = True
+    # HTTPS/SSL - ALB terminates SSL, so no redirect needed
+    SECURE_SSL_REDIRECT = False  # ALB handles HTTPS termination
     SESSION_COOKIE_SECURE = COOKIE_SECURE
     CSRF_COOKIE_SECURE = COOKIE_SECURE
     

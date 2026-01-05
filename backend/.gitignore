@@ -48,3 +48,12 @@ backups/
 
 # Docker
 .dockerignore
+
+# SSL Certificates - NIGDY NIE COMMITUJ!
+*.pem
+*.key
+*.crt
+*.csr
+cloudflare-origin*
+ssl-cert*
+private-key*

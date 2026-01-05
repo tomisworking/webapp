@@ -230,7 +230,7 @@ jobs:
         id: prepare-user-data
         run: |
           # Użyj user-data z repo
-          cp docs/how_to_aws_deploy/user_data.txt /tmp/user-data.sh
+          cp backend/user_data.txt /tmp/user-data.sh
           
           # Podmień dynamiczne wartości
           sed -i "s|311603531332.dkr.ecr.us-east-1.amazonaws.com/forum-backend|${{ steps.get-ecr-info.outputs.ECR_URI }}|g" /tmp/user-data.sh
@@ -324,11 +324,20 @@ jobs:
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ${{ env.ASG_NAME }} \
             --preferences '{
-              "MinHealthyPercentage": 50,
-              "InstanceWarmup": 60,
-              "SkipMatching": false,
+              "MinHealthyPercentage": 90,
+              "MaxHealthyPercentage": 100,
+              "InstanceWarmup": 300,
+              "CheckpointPercentages": [50],
+              "CheckpointDelay": 300,
+              "SkipMatching": true,
               "ScaleInProtectedInstances": "Ignore",
-              "StandbyInstances": "Terminate"
+              "StandbyInstances": "Ignore"
+            }' \
+            --desired-configuration '{
+              "LaunchTemplate": {
+                "LaunchTemplateName": "${{ env.LAUNCH_TEMPLATE_NAME }}",
+                "Version": "$Latest"
+              }
             }' || echo "Instance refresh may already be in progress"
       
       - name: Czekaj na rozpoczęcie refresh
