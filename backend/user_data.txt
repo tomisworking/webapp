@@ -175,11 +175,17 @@ server {
         proxy_set_header X-Forwarded-Proto https;
     }
 
-    # Django static files
-    location /static/ {
+    # Django admin static files (must be before /static/)
+    location /static/admin/ {
         proxy_pass http://django;
-        expires 30d;
+    }
+
+    # React static files (JS, CSS, etc.)
+    location /static/ {
+        alias /var/www/frontend/static/;
+        expires 1y;
         add_header Cache-Control "public, immutable";
+        try_files $uri =404;
     }
 
     # Django media files
@@ -249,9 +255,17 @@ server {
         proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
     }
 
-    # Django static
-    location /static/ {
+    # Django admin static files (must be before /static/)
+    location /static/admin/ {
         proxy_pass http://django;
+    }
+
+    # React static files (JS, CSS, etc.)
+    location /static/ {
+        alias /var/www/frontend/static/;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
     }
 
     # Django media
