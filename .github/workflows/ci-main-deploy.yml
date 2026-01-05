@@ -319,9 +319,11 @@ jobs:
           fi
       
       - name: Uruchom Instance Refresh
+        id: start-refresh
         run: |
           echo "🚀 Starting instance refresh..."
-          aws autoscaling start-instance-refresh \
+          # ASG automatycznie użyje najnowszej wersji Launch Template (ustawionej jako $Latest)
+          REFRESH_ID=$(aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ${{ env.ASG_NAME }} \
             --preferences '{
               "MinHealthyPercentage": 90,
@@ -333,17 +335,50 @@ jobs:
               "ScaleInProtectedInstances": "Ignore",
               "StandbyInstances": "Ignore"
             }' \
-            --desired-configuration '{
-              "LaunchTemplate": {
-                "LaunchTemplateName": "${{ env.LAUNCH_TEMPLATE_NAME }}",
-                "Version": "$Latest"
-              }
-            }' || echo "Instance refresh may already be in progress"
+            --query 'InstanceRefreshId' \
+            --output text 2>&1)
+          
+          if [ $? -ne 0 ]; then
+            echo "❌ Failed to start instance refresh!"
+            echo "Error: $REFRESH_ID"
+            exit 1
+          fi
+          
+          echo "REFRESH_ID=$REFRESH_ID" >> $GITHUB_OUTPUT
+          echo "✅ Instance refresh started: $REFRESH_ID"
       
       - name: Czekaj na rozpoczęcie refresh
         run: |
           echo "⏳ Waiting for instance refresh to start..."
           sleep 30
+      
+      - name: Weryfikuj status Instance Refresh
+        run: |
+          echo "🔍 Checking instance refresh status..."
+          REFRESH_STATUS=$(aws autoscaling describe-instance-refreshes \
+            --auto-scaling-group-name ${{ env.ASG_NAME }} \
+            --instance-refresh-ids ${{ steps.start-refresh.outputs.REFRESH_ID }} \
+            --query 'InstanceRefreshes[0].Status' \
+            --output text 2>/dev/null || echo "Unknown")
+          
+          echo "Current status: $REFRESH_STATUS"
+          
+          if [ "$REFRESH_STATUS" = "Failed" ] || [ "$REFRESH_STATUS" = "Cancelled" ]; then
+            echo "❌ Instance refresh failed or was cancelled!"
+            
+            # Pobierz szczegóły błędu
+            aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name ${{ env.ASG_NAME }} \
+              --instance-refresh-ids ${{ steps.start-refresh.outputs.REFRESH_ID }} \
+              --query 'InstanceRefreshes[0].StatusReason' \
+              --output text
+            
+            exit 1
+          elif [ "$REFRESH_STATUS" = "InProgress" ] || [ "$REFRESH_STATUS" = "Pending" ]; then
+            echo "✅ Instance refresh is running"
+          else
+            echo "⚠️  Unknown status: $REFRESH_STATUS"
+          fi
       
       - name: Status deploymentu
         run: |
@@ -351,6 +386,7 @@ jobs:
           echo "Backend image: ${{ needs.build-and-push-backend.outputs.IMAGE_URI || 'N/A' }}"
           echo "Frontend S3: s3://${{ env.S3_BUCKET_FRONTEND }}/latest/"
           echo "ASG: ${{ env.ASG_NAME }}"
+          echo "Instance Refresh ID: ${{ steps.start-refresh.outputs.REFRESH_ID }}"
           echo ""
           echo "Sprawdź status w AWS Console:"
           echo "  - EC2 → Auto Scaling Groups → ${{ env.ASG_NAME }} → Activity tab"
