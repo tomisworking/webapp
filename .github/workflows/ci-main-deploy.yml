@@ -531,7 +531,6 @@ jobs:
             echo "⚠️  Verification timed out after 3 minutes"
             echo "Instance refresh may still be starting - check AWS Console"
             echo "::warning::Instance refresh verification timed out"
-          fi"
             echo "Check AWS Console for current status"
           fi
       
