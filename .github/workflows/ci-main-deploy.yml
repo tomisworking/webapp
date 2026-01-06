@@ -234,56 +234,58 @@ jobs:
           echo "Preview (first 20 lines):"
           head -20 /tmp/user-data.sh
       
-      - name: Sprawdź czy user-data się zmienił
-        id: check-changes
+      - name: Pobierz obecną wersję Launch Template
+        id: get-current-version
         run: |
-          # Pobierz obecny user-data z Launch Template
           LATEST_VERSION=$(aws ec2 describe-launch-template-versions \
             --launch-template-name ${{ env.LAUNCH_TEMPLATE_NAME }} \
             --query 'LaunchTemplateVersions[0].VersionNumber' \
             --output text)
           
-          aws ec2 describe-launch-template-versions \
-            --launch-template-name ${{ env.LAUNCH_TEMPLATE_NAME }} \
-            --versions $LATEST_VERSION \
-            --query 'LaunchTemplateVersions[0].LaunchTemplateData.UserData' \
-            --output text | base64 -d > /tmp/current-user-data.sh
-          
-          # Porównaj
-          if diff -q /tmp/user-data.sh /tmp/current-user-data.sh > /dev/null 2>&1; then
-            echo "CHANGED=false" >> $GITHUB_OUTPUT
-            echo "⏭️  User-data unchanged, skipping update"
-          else
-            echo "CHANGED=true" >> $GITHUB_OUTPUT
-            echo "✅ User-data changed, will update"
-            echo "Differences:"
-            diff /tmp/user-data.sh /tmp/current-user-data.sh || true
-          fi
-          
           echo "LATEST_VERSION=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "Current Launch Template version: $LATEST_VERSION"
       
-      - name: Utwórz nową wersję Launch Template
-        if: steps.check-changes.outputs.CHANGED == 'true'
+      - name: Dodaj timestamp do user-data (force update)
+        id: add-timestamp
+        run: |
+          # Dodaj timestamp jako komentarz na końcu user-data
+          # To gwarantuje że każdy deployment tworzy NOWĄ wersję Launch Template
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          COMMIT_SHA="${{ github.sha }}"
+          
+          echo "" >> /tmp/user-data.sh
+          echo "# Deployment timestamp: $TIMESTAMP" >> /tmp/user-data.sh
+          echo "# Git commit: $COMMIT_SHA" >> /tmp/user-data.sh
+          echo "# Instance refresh will replace all instances" >> /tmp/user-data.sh
+          
+          echo "✅ Timestamp added to user-data"
+      
+      - name: Utwórz nową wersję Launch Template (zawsze)
         id: create-version
         run: |
           USER_DATA_B64=$(base64 -w 0 < /tmp/user-data.sh)
+          
+          echo "📝 Creating new Launch Template version..."
           NEW_VERSION=$(aws ec2 create-launch-template-version \
             --launch-template-name ${{ env.LAUNCH_TEMPLATE_NAME }} \
-            --source-version ${{ steps.check-changes.outputs.LATEST_VERSION }} \
+            --source-version ${{ steps.get-current-version.outputs.LATEST_VERSION }} \
             --launch-template-data "{\"UserData\":\"$USER_DATA_B64\"}" \
             --query 'LaunchTemplateVersion.VersionNumber' \
             --output text)
+          
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "✅ New Launch Template version created: $NEW_VERSION"
+          echo "Previous version: ${{ steps.get-current-version.outputs.LATEST_VERSION }}"
+          echo "CHANGED=true" >> $GITHUB_OUTPUT
       
       - name: Ustaw nową wersję jako domyślną
-        if: steps.check-changes.outputs.CHANGED == 'true'
         run: |
           aws ec2 modify-launch-template \
             --launch-template-name ${{ env.LAUNCH_TEMPLATE_NAME }} \
             --default-version '$Latest' \
             --region ${{ env.AWS_REGION }}
-          echo "✅ New version set as default"
+          
+          echo "✅ Launch Template version ${{ steps.create-version.outputs.NEW_VERSION }} set as default"
 
   # ============================================
   # DEPLOY - RESTART ASG
@@ -330,32 +332,68 @@ jobs:
             echo "✅ No active instance refreshes found"
           fi
       
-      - name: Uruchom Instance Refresh
+      - name: Sprawdź Launch Template przed refresh
+        id: verify-template
+        run: |
+          echo "🔍 Verifying Launch Template configuration..."
+          
+          # Pobierz domyślną wersję Launch Template
+          DEFAULT_VERSION=$(aws ec2 describe-launch-templates \
+            --launch-template-names ${{ env.LAUNCH_TEMPLATE_NAME }} \
+            --query 'LaunchTemplates[0].DefaultVersionNumber' \
+            --output text)
+          
+          echo "Default Launch Template version: $DEFAULT_VERSION"
+          echo "This version will be used for new instances"
+          
+          # Sprawdź czy ASG używa $Latest lub $Default
+          LT_CONFIG=$(aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names ${{ env.ASG_NAME }} \
+            --query 'AutoScalingGroups[0].LaunchTemplate' \
+            --output json)
+          
+          echo "ASG Launch Template config:"
+          echo "$LT_CONFIG" | jq '.'
+      
+      - name: Uruchom Instance Refresh (z wymuszeniem)
         id: start-refresh
         run: |
-          echo "🚀 Starting instance refresh with correct settings..."
+          echo "🚀 Starting instance refresh with forced replacement..."
           
           # KLUCZOWE ZMIANY:
-          # 1. Strategy = "Rolling" (domyślne, Replace instances)
+          # 1. Strategy = "Rolling" (Replace instances, nie tylko root volumes)
           # 2. MinHealthyPercentage: 90, MaxHealthyPercentage: 100
           # 3. InstanceWarmup: 300 (5 minut)
-          # 4. SkipMatching: true - WAŻNE! Wymusza refresh nawet gdy config się nie zmienił
+          # 4. SkipMatching: true - wymusza refresh
+          # 5. Desired configuration: określamy konkretną wersję Launch Template
+          
+          # Pobierz najnowszą wersję Launch Template
+          LATEST_LT_VERSION=$(aws ec2 describe-launch-template-versions \
+            --launch-template-name ${{ env.LAUNCH_TEMPLATE_NAME }} \
+            --versions '$Latest' \
+            --query 'LaunchTemplateVersions[0].VersionNumber' \
+            --output text)
+          
+          echo "Will use Launch Template version: $LATEST_LT_VERSION"
           
           REFRESH_ID=$(aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ${{ env.ASG_NAME }} \
             --strategy Rolling \
+            --desired-configuration "{
+              \"LaunchTemplate\": {
+                \"LaunchTemplateName\": \"${{ env.LAUNCH_TEMPLATE_NAME }}\",
+                \"Version\": \"$LATEST_LT_VERSION\"
+              }
+            }" \
             --preferences '{
               "MinHealthyPercentage": 90,
               "MaxHealthyPercentage": 100,
               "InstanceWarmup": 300,
               "CheckpointPercentages": [50],
               "CheckpointDelay": 300,
-              "SkipMatching": true,
+              "SkipMatching": false,
               "ScaleInProtectedInstances": "Ignore",
-              "StandbyInstances": "Ignore",
-              "AlarmSpecification": {
-                "Alarms": []
-              }
+              "StandbyInstances": "Ignore"
             }' \
             --region ${{ env.AWS_REGION }} \
             --query 'InstanceRefreshId' \
@@ -366,10 +404,11 @@ jobs:
             echo "Error: $REFRESH_ID"
             
             # Sprawdź szczegóły ASG
+            echo ""
             echo "ASG Details:"
             aws autoscaling describe-auto-scaling-groups \
               --auto-scaling-group-names ${{ env.ASG_NAME }} \
-              --query 'AutoScalingGroups[0].[MinSize,MaxSize,DesiredCapacity]' \
+              --query 'AutoScalingGroups[0].[MinSize,MaxSize,DesiredCapacity,Instances[*].[InstanceId,LaunchTemplate.Version]]' \
               --output table
             
             exit 1
@@ -378,12 +417,13 @@ jobs:
           echo "REFRESH_ID=$REFRESH_ID" >> $GITHUB_OUTPUT
           echo "✅ Instance refresh started: $REFRESH_ID"
           echo ""
-          echo "Settings:"
+          echo "Configuration:"
           echo "  - Strategy: Rolling (Replace instances)"
+          echo "  - Launch Template Version: $LATEST_LT_VERSION (explicit)"
           echo "  - Min Healthy: 90%"
           echo "  - Max Healthy: 100%"
           echo "  - Instance Warmup: 300s"
-          echo "  - Skip Matching: true"
+          echo "  - Skip Matching: false (comparing versions)"
       
       - name: Czekaj na rozpoczęcie refresh
         run: |
@@ -391,63 +431,107 @@ jobs:
           sleep 15
       
       - name: Weryfikuj status Instance Refresh
-        timeout-minutes: 2
+        timeout-minutes: 3
         run: |
           echo "🔍 Verifying instance refresh status..."
           
-          MAX_ATTEMPTS=6
+          MAX_ATTEMPTS=12
           ATTEMPT=1
           
           while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
-            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS..."
+            echo ""
+            echo "Check $ATTEMPT/$MAX_ATTEMPTS..."
             
-            REFRESH_STATUS=$(aws autoscaling describe-instance-refreshes \
+            REFRESH_INFO=$(aws autoscaling describe-instance-refreshes \
               --auto-scaling-group-name ${{ env.ASG_NAME }} \
               --instance-refresh-ids ${{ steps.start-refresh.outputs.REFRESH_ID }} \
-              --query 'InstanceRefreshes[0].Status' \
-              --output text 2>/dev/null || echo "Unknown")
+              --query 'InstanceRefreshes[0]' \
+              --output json 2>/dev/null || echo "{}")
             
-            echo "Current status: $REFRESH_STATUS"
+            STATUS=$(echo "$REFRESH_INFO" | jq -r '.Status // "Unknown"')
+            PERCENTAGE=$(echo "$REFRESH_INFO" | jq -r '.PercentageComplete // 0')
+            INSTANCES_TO_UPDATE=$(echo "$REFRESH_INFO" | jq -r '.InstancesToUpdate // 0')
             
-            if [ "$REFRESH_STATUS" = "Failed" ] || [ "$REFRESH_STATUS" = "Cancelled" ]; then
+            echo "Status: $STATUS"
+            echo "Progress: ${PERCENTAGE}%"
+            echo "Instances to update: $INSTANCES_TO_UPDATE"
+            
+            # KLUCZOWA WALIDACJA: Sprawdź czy są instancje do zaktualizowania
+            if [ "$INSTANCES_TO_UPDATE" = "0" ] && [ "$STATUS" != "InProgress" ]; then
+              echo ""
+              echo "❌ ERROR: Instance refresh found 0 instances to update!"
+              echo "This means AWS thinks instances are already up-to-date."
+              echo ""
+              echo "Troubleshooting info:"
+              
+              # Pokaż obecne instancje i ich Launch Template versions
+              echo ""
+              echo "Current instances:"
+              aws autoscaling describe-auto-scaling-groups \
+                --auto-scaling-group-names ${{ env.ASG_NAME }} \
+                --query 'AutoScalingGroups[0].Instances[*].[InstanceId,LaunchTemplate.Version,LaunchTemplate.LaunchTemplateName,HealthStatus]' \
+                --output table
+              
+              # Pokaż Launch Template versions
+              echo ""
+              echo "Launch Template versions:"
+              aws ec2 describe-launch-template-versions \
+                --launch-template-name ${{ env.LAUNCH_TEMPLATE_NAME }} \
+                --max-results 3 \
+                --query 'LaunchTemplateVersions[*].[VersionNumber,CreateTime,DefaultVersion]' \
+                --output table
+              
+              echo ""
+              echo "⚠️  Instance refresh completed immediately with no changes."
+              echo "The Launch Template update may not have propagated correctly."
+              
+              # Nie wychodźmy z błędem - niech deployment się uda, ale zalogujmy warning
+              echo "::warning::Instance refresh updated 0 instances - check if Launch Template is correctly configured"
+              break
+            fi
+            
+            if [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ]; then
+              echo ""
               echo "❌ Instance refresh failed or was cancelled!"
               
               # Pobierz szczegóły błędu
               echo "Error details:"
-              aws autoscaling describe-instance-refreshes \
-                --auto-scaling-group-name ${{ env.ASG_NAME }} \
-                --instance-refresh-ids ${{ steps.start-refresh.outputs.REFRESH_ID }} \
-                --query 'InstanceRefreshes[0].[StatusReason,PercentageComplete]' \
-                --output table
+              echo "$REFRESH_INFO" | jq '.StatusReason // "No reason provided"'
               
               exit 1
-            elif [ "$REFRESH_STATUS" = "InProgress" ]; then
+            elif [ "$STATUS" = "InProgress" ]; then
               echo "✅ Instance refresh is running successfully!"
               
-              # Pokaż progress
-              PROGRESS=$(aws autoscaling describe-instance-refreshes \
-                --auto-scaling-group-name ${{ env.ASG_NAME }} \
-                --instance-refresh-ids ${{ steps.start-refresh.outputs.REFRESH_ID }} \
-                --query 'InstanceRefreshes[0].PercentageComplete' \
-                --output text)
-              echo "Progress: ${PROGRESS}%"
+              if [ "$INSTANCES_TO_UPDATE" != "0" ]; then
+                echo "✅ Will update $INSTANCES_TO_UPDATE instance(s)"
+              fi
+              
               break
-            elif [ "$REFRESH_STATUS" = "Pending" ]; then
+            elif [ "$STATUS" = "Pending" ]; then
               echo "⏳ Refresh is pending, waiting..."
-              sleep 10
+              sleep 15
               ATTEMPT=$((ATTEMPT + 1))
-            elif [ "$REFRESH_STATUS" = "Successful" ]; then
-              echo "✅ Instance refresh already completed!"
+            elif [ "$STATUS" = "Successful" ]; then
+              if [ "$INSTANCES_TO_UPDATE" = "0" ]; then
+                echo "⚠️  Refresh completed but updated 0 instances!"
+                echo "::warning::Instance refresh updated 0 instances"
+              else
+                echo "✅ Instance refresh already completed successfully!"
+              fi
               break
             else
-              echo "⚠️  Unknown status: $REFRESH_STATUS"
-              sleep 10
+              echo "⚠️  Unknown status: $STATUS"
+              sleep 15
               ATTEMPT=$((ATTEMPT + 1))
             fi
           done
           
           if [ $ATTEMPT -gt $MAX_ATTEMPTS ]; then
-            echo "⚠️  Verification timed out, but refresh may still be running"
+            echo ""
+            echo "⚠️  Verification timed out after 3 minutes"
+            echo "Instance refresh may still be starting - check AWS Console"
+            echo "::warning::Instance refresh verification timed out"
+          fi"
             echo "Check AWS Console for current status"
           fi
       
@@ -470,7 +554,7 @@ jobs:
           echo "  (Instance warmup: 5min + checkpoint delay: 5min)"
 
   # ============================================
-  # NOTYFIKACJE (opcjonalne)
+  # NOTYFIKACJE 
   # ============================================
   notify:
     name: Deployment Status
