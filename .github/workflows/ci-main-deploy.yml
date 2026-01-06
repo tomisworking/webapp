@@ -80,6 +80,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-workflows
     if: needs.check-workflows.outputs.should_deploy == 'true'
+    outputs:
+      image_uri: ${{ steps.build-image.outputs.image_uri }}
     
     steps:
       - name: Pobierz kod
@@ -96,6 +98,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
       
       - name: Build, tag i push obraz do ECR
+        id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY_BACKEND }}
@@ -106,11 +109,8 @@ jobs:
           docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-          echo "IMAGE_URI=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_ENV
-      
-      - name: Output image URI
-        run: |
-          echo "✅ Backend image pushed: ${{ env.IMAGE_URI }}"
+          echo "image_uri=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "✅ Backend image pushed: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
   # ============================================
   # BUILD REACT I UPLOAD DO S3
@@ -200,6 +200,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [check-workflows, build-and-push-backend, build-and-upload-frontend]
     if: needs.check-workflows.outputs.should_deploy == 'true'
+    outputs:
+      template_updated: ${{ steps.check-changes.outputs.CHANGED }}
     
     steps:
       - name: Pobierz kod
@@ -262,6 +264,7 @@ jobs:
       
       - name: Utwórz nową wersję Launch Template
         if: steps.check-changes.outputs.CHANGED == 'true'
+        id: create-version
         run: |
           USER_DATA_B64=$(base64 -w 0 < /tmp/user-data.sh)
           NEW_VERSION=$(aws ec2 create-launch-template-version \
@@ -290,6 +293,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [check-workflows, build-and-push-backend, build-and-upload-frontend, update-launch-template]
     if: needs.check-workflows.outputs.should_deploy == 'true'
+    outputs:
+      refresh_id: ${{ steps.start-refresh.outputs.REFRESH_ID }}
     
     steps:
       - name: Konfiguruj AWS credentials
@@ -298,26 +303,47 @@ jobs:
           role-to-assume: arn:aws:iam::311603531332:role/GitHubActionsRole
           aws-region: ${{ env.AWS_REGION }}
       
-      - name: Sprawdź czy Instance Refresh już działa
-        id: check-refresh
+      - name: Anuluj istniejący Instance Refresh (jeśli działa)
+        id: cancel-existing
         run: |
-          REFRESH_STATUS=$(aws autoscaling describe-instance-refreshes \
+          echo "🔍 Checking for existing instance refreshes..."
+          
+          # Pobierz aktywne instance refreshes
+          ACTIVE_REFRESHES=$(aws autoscaling describe-instance-refreshes \
             --auto-scaling-group-name ${{ env.ASG_NAME }} \
-            --query 'InstanceRefreshes[0].Status' \
-            --output text 2>/dev/null || echo "None")
-          echo "Current refresh status: $REFRESH_STATUS"
-          if [ "$REFRESH_STATUS" = "InProgress" ]; then
-            echo "⚠️  Instance refresh already in progress, waiting..."
-            exit 0
+            --query 'InstanceRefreshes[?Status==`InProgress` || Status==`Pending`].InstanceRefreshId' \
+            --output text)
+          
+          if [ -n "$ACTIVE_REFRESHES" ]; then
+            echo "⚠️  Found active instance refresh(es), cancelling..."
+            for REFRESH_ID in $ACTIVE_REFRESHES; do
+              echo "Cancelling: $REFRESH_ID"
+              aws autoscaling cancel-instance-refresh \
+                --auto-scaling-group-name ${{ env.ASG_NAME }} \
+                --region ${{ env.AWS_REGION }} || true
+            done
+            
+            # Poczekaj aż anulowanie się zakończy
+            echo "⏳ Waiting for cancellation to complete..."
+            sleep 30
+          else
+            echo "✅ No active instance refreshes found"
           fi
       
       - name: Uruchom Instance Refresh
         id: start-refresh
         run: |
-          echo "🚀 Starting instance refresh..."
-          # ASG automatycznie użyje najnowszej wersji Launch Template (ustawionej jako $Latest)
+          echo "🚀 Starting instance refresh with correct settings..."
+          
+          # KLUCZOWE ZMIANY:
+          # 1. Strategy = "Rolling" (domyślne, Replace instances)
+          # 2. MinHealthyPercentage: 90, MaxHealthyPercentage: 100
+          # 3. InstanceWarmup: 300 (5 minut)
+          # 4. SkipMatching: true - WAŻNE! Wymusza refresh nawet gdy config się nie zmienił
+          
           REFRESH_ID=$(aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ${{ env.ASG_NAME }} \
+            --strategy Rolling \
             --preferences '{
               "MinHealthyPercentage": 90,
               "MaxHealthyPercentage": 100,
@@ -326,64 +352,122 @@ jobs:
               "CheckpointDelay": 300,
               "SkipMatching": true,
               "ScaleInProtectedInstances": "Ignore",
-              "StandbyInstances": "Ignore"
+              "StandbyInstances": "Ignore",
+              "AlarmSpecification": {
+                "Alarms": []
+              }
             }' \
+            --region ${{ env.AWS_REGION }} \
             --query 'InstanceRefreshId' \
             --output text 2>&1)
           
           if [ $? -ne 0 ]; then
             echo "❌ Failed to start instance refresh!"
             echo "Error: $REFRESH_ID"
+            
+            # Sprawdź szczegóły ASG
+            echo "ASG Details:"
+            aws autoscaling describe-auto-scaling-groups \
+              --auto-scaling-group-names ${{ env.ASG_NAME }} \
+              --query 'AutoScalingGroups[0].[MinSize,MaxSize,DesiredCapacity]' \
+              --output table
+            
             exit 1
           fi
           
           echo "REFRESH_ID=$REFRESH_ID" >> $GITHUB_OUTPUT
           echo "✅ Instance refresh started: $REFRESH_ID"
+          echo ""
+          echo "Settings:"
+          echo "  - Strategy: Rolling (Replace instances)"
+          echo "  - Min Healthy: 90%"
+          echo "  - Max Healthy: 100%"
+          echo "  - Instance Warmup: 300s"
+          echo "  - Skip Matching: true"
       
       - name: Czekaj na rozpoczęcie refresh
         run: |
           echo "⏳ Waiting for instance refresh to start..."
-          sleep 30
+          sleep 15
       
       - name: Weryfikuj status Instance Refresh
+        timeout-minutes: 2
         run: |
-          echo "🔍 Checking instance refresh status..."
-          REFRESH_STATUS=$(aws autoscaling describe-instance-refreshes \
-            --auto-scaling-group-name ${{ env.ASG_NAME }} \
-            --instance-refresh-ids ${{ steps.start-refresh.outputs.REFRESH_ID }} \
-            --query 'InstanceRefreshes[0].Status' \
-            --output text 2>/dev/null || echo "Unknown")
+          echo "🔍 Verifying instance refresh status..."
           
-          echo "Current status: $REFRESH_STATUS"
+          MAX_ATTEMPTS=6
+          ATTEMPT=1
           
-          if [ "$REFRESH_STATUS" = "Failed" ] || [ "$REFRESH_STATUS" = "Cancelled" ]; then
-            echo "❌ Instance refresh failed or was cancelled!"
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS..."
             
-            # Pobierz szczegóły błędu
-            aws autoscaling describe-instance-refreshes \
+            REFRESH_STATUS=$(aws autoscaling describe-instance-refreshes \
               --auto-scaling-group-name ${{ env.ASG_NAME }} \
               --instance-refresh-ids ${{ steps.start-refresh.outputs.REFRESH_ID }} \
-              --query 'InstanceRefreshes[0].StatusReason' \
-              --output text
+              --query 'InstanceRefreshes[0].Status' \
+              --output text 2>/dev/null || echo "Unknown")
             
-            exit 1
-          elif [ "$REFRESH_STATUS" = "InProgress" ] || [ "$REFRESH_STATUS" = "Pending" ]; then
-            echo "✅ Instance refresh is running"
-          else
-            echo "⚠️  Unknown status: $REFRESH_STATUS"
+            echo "Current status: $REFRESH_STATUS"
+            
+            if [ "$REFRESH_STATUS" = "Failed" ] || [ "$REFRESH_STATUS" = "Cancelled" ]; then
+              echo "❌ Instance refresh failed or was cancelled!"
+              
+              # Pobierz szczegóły błędu
+              echo "Error details:"
+              aws autoscaling describe-instance-refreshes \
+                --auto-scaling-group-name ${{ env.ASG_NAME }} \
+                --instance-refresh-ids ${{ steps.start-refresh.outputs.REFRESH_ID }} \
+                --query 'InstanceRefreshes[0].[StatusReason,PercentageComplete]' \
+                --output table
+              
+              exit 1
+            elif [ "$REFRESH_STATUS" = "InProgress" ]; then
+              echo "✅ Instance refresh is running successfully!"
+              
+              # Pokaż progress
+              PROGRESS=$(aws autoscaling describe-instance-refreshes \
+                --auto-scaling-group-name ${{ env.ASG_NAME }} \
+                --instance-refresh-ids ${{ steps.start-refresh.outputs.REFRESH_ID }} \
+                --query 'InstanceRefreshes[0].PercentageComplete' \
+                --output text)
+              echo "Progress: ${PROGRESS}%"
+              break
+            elif [ "$REFRESH_STATUS" = "Pending" ]; then
+              echo "⏳ Refresh is pending, waiting..."
+              sleep 10
+              ATTEMPT=$((ATTEMPT + 1))
+            elif [ "$REFRESH_STATUS" = "Successful" ]; then
+              echo "✅ Instance refresh already completed!"
+              break
+            else
+              echo "⚠️  Unknown status: $REFRESH_STATUS"
+              sleep 10
+              ATTEMPT=$((ATTEMPT + 1))
+            fi
+          done
+          
+          if [ $ATTEMPT -gt $MAX_ATTEMPTS ]; then
+            echo "⚠️  Verification timed out, but refresh may still be running"
+            echo "Check AWS Console for current status"
           fi
       
       - name: Status deploymentu
         run: |
-          echo "✅ Deployment initiated!"
-          echo "Backend image: ${{ needs.build-and-push-backend.outputs.IMAGE_URI || 'N/A' }}"
-          echo "Frontend S3: s3://${{ env.S3_BUCKET_FRONTEND }}/latest/"
-          echo "ASG: ${{ env.ASG_NAME }}"
-          echo "Instance Refresh ID: ${{ steps.start-refresh.outputs.REFRESH_ID }}"
+          echo "✅ Deployment initiated successfully!"
           echo ""
-          echo "Sprawdź status w AWS Console:"
-          echo "  - EC2 → Auto Scaling Groups → ${{ env.ASG_NAME }} → Activity tab"
-          echo "  - EC2 → Auto Scaling Groups → ${{ env.ASG_NAME }} → Instance refresh tab"
+          echo "📦 Deployment Details:"
+          echo "  Backend image: ${{ needs.build-and-push-backend.outputs.image_uri }}"
+          echo "  Frontend S3: s3://${{ env.S3_BUCKET_FRONTEND }}/latest/"
+          echo "  ASG: ${{ env.ASG_NAME }}"
+          echo "  Instance Refresh ID: ${{ steps.start-refresh.outputs.REFRESH_ID }}"
+          echo ""
+          echo "🔍 Monitor Progress:"
+          echo "  AWS Console → EC2 → Auto Scaling Groups → ${{ env.ASG_NAME }}"
+          echo "  - Activity tab: Zobacz instance lifecycle events"
+          echo "  - Instance refresh tab: Monitoruj progress refresh"
+          echo ""
+          echo "⏱️  Expected completion time: ~10-15 minutes"
+          echo "  (Instance warmup: 5min + checkpoint delay: 5min)"
 
   # ============================================
   # NOTYFIKACJE (opcjonalne)
@@ -398,13 +482,20 @@ jobs:
       - name: Deployment status
         run: |
           if [ "${{ needs.deploy.result }}" == "success" ]; then
-            echo "✅ Deployment successful!"
-            echo "Backend: ${{ needs.build-and-push-backend.outputs.IMAGE_URI || 'N/A' }}"
+            echo "✅ =========================================="
+            echo "✅ DEPLOYMENT SUCCESSFUL!"
+            echo "✅ =========================================="
+            echo ""
+            echo "Backend: ${{ needs.build-and-push-backend.outputs.image_uri }}"
             echo "Frontend: s3://${{ env.S3_BUCKET_FRONTEND }}/latest/"
+            echo "Instance Refresh ID: ${{ needs.deploy.outputs.refresh_id }}"
+            echo ""
+            echo "Monitor at: https://console.aws.amazon.com/ec2/home?region=${{ env.AWS_REGION }}#AutoScalingGroupDetails:id=${{ env.ASG_NAME }};view=instanceRefreshes"
           else
-            echo "❌ Deployment failed!"
+            echo "❌ =========================================="
+            echo "❌ DEPLOYMENT FAILED!"
+            echo "❌ =========================================="
+            echo ""
+            echo "Check the logs above for details"
             exit 1
           fi
-
-
-
