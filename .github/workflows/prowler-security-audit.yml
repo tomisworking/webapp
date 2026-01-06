@@ -33,20 +33,20 @@ jobs:
           role-to-assume: arn:aws:iam::311603531332:role/GitHubActionsRole
           aws-region: ${{ env.AWS_REGION }}
       
+      - name: Install Prowler
+        run: |
+          pip install prowler
+          prowler --version
+      
       - name: Run Prowler AWS Security Audit
-        uses: prowler-cloud/prowler@main
-        with:
-          # Scan entire AWS account
-          command: 'aws'
-          # Focus on CIS AWS Foundations Benchmark
-          checks: 'cis_1.5_aws'
-          # Generate multiple report formats
-          output-formats: 'html,json,csv'
-          # Output directory
-          output-directory: 'prowler-reports'
+        run: |
+          prowler aws \
+            --compliance cis_1.5_aws \
+            --output-formats html json csv \
+            --output-directory prowler-reports
       
       - name: Upload Prowler Reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: prowler-reports
@@ -57,10 +57,12 @@ jobs:
         if: always()
         run: |
           # Parse JSON report for summary
-          if [ -f prowler-reports/prowler-output.json ]; then
-            TOTAL=$(jq '[.[] | select(.Status)] | length' prowler-reports/prowler-output.json)
-            PASSED=$(jq '[.[] | select(.Status=="PASS")] | length' prowler-reports/prowler-output.json)
-            FAILED=$(jq '[.[] | select(.Status=="FAIL")] | length' prowler-reports/prowler-output.json)
+          # Prowler v5 generates files with account ID in name
+          JSON_FILE=$(find prowler-reports -name "*.json" -type f | head -1)
+          if [ -f "$JSON_FILE" ]; then
+            TOTAL=$(jq '[.[] | select(.Status)] | length' "$JSON_FILE")
+            PASSED=$(jq '[.[] | select(.Status=="PASS")] | length' "$JSON_FILE")
+            FAILED=$(jq '[.[] | select(.Status=="FAIL")] | length' "$JSON_FILE")
             
             if [ $TOTAL -gt 0 ]; then
               COMPLIANCE=$(awk "BEGIN {printf \"%.1f\", ($PASSED/$TOTAL)*100}")
@@ -83,14 +85,15 @@ jobs:
             # List critical failures
             echo "### ⚠️ Critical Findings" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            jq -r '.[] | select(.Status=="FAIL" and .Severity=="critical") | "- **\(.CheckID)**: \(.CheckTitle)"' prowler-reports/prowler-output.json | head -10 >> $GITHUB_STEP_SUMMARY || echo "No critical findings" >> $GITHUB_STEP_SUMMARY
+            jq -r '.[] | select(.Status=="FAIL" and .Severity=="critical") | "- **\(.CheckID)**: \(.CheckTitle)"' "$JSON_FILE" | head -10 >> $GITHUB_STEP_SUMMARY || echo "No critical findings" >> $GITHUB_STEP_SUMMARY
           fi
       
       - name: Check Compliance Threshold
         run: |
-          if [ -f prowler-reports/prowler-output.json ]; then
-            TOTAL=$(jq '[.[] | select(.Status)] | length' prowler-reports/prowler-output.json)
-            PASSED=$(jq '[.[] | select(.Status=="PASS")] | length' prowler-reports/prowler-output.json)
+          JSON_FILE=$(find prowler-reports -name "*.json" -type f | head -1)
+          if [ -f "$JSON_FILE" ]; then
+            TOTAL=$(jq '[.[] | select(.Status)] | length' "$JSON_FILE")
+            PASSED=$(jq '[.[] | select(.Status=="PASS")] | length' "$JSON_FILE")
             
             if [ $TOTAL -gt 0 ]; then
               COMPLIANCE=$(awk "BEGIN {printf \"%.1f\", ($PASSED/$TOTAL)*100}")
@@ -111,8 +114,11 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            if (fs.existsSync('prowler-reports/prowler-output.json')) {
-              const data = JSON.parse(fs.readFileSync('prowler-reports/prowler-output.json'));
+            const path = require('path');
+            const files = fs.readdirSync('prowler-reports').filter(f => f.endsWith('.json'));
+            if (files.length > 0) {
+              const jsonFile = path.join('prowler-reports', files[0]);
+              const data = JSON.parse(fs.readFileSync(jsonFile));
               const total = data.filter(r => r.Status).length;
               const passed = data.filter(r => r.Status === 'PASS').length;
               const failed = data.filter(r => r.Status === 'FAIL').length;
