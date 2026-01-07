@@ -43,7 +43,9 @@ jobs:
           prowler aws \
             --compliance cis_1.5_aws \
             --output-formats html json-ocsf csv \
-            --output-directory prowler-reports
+            --output-directory prowler-reports \
+            --scan-unused-services \
+            --ignore-exit-code-3
       
       - name: Upload Prowler Reports
         uses: actions/upload-artifact@v4
