@@ -42,7 +42,7 @@ jobs:
         run: |
           prowler aws \
             --compliance cis_1.5_aws \
-            --output-formats html json csv \
+            --output-formats html json-ocsf csv \
             --output-directory prowler-reports
       
       - name: Upload Prowler Reports
