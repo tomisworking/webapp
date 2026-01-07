@@ -59,12 +59,13 @@ jobs:
         if: always()
         run: |
           # Parse JSON report for summary
-          # Prowler v5 generates files with account ID in name
-          JSON_FILE=$(find prowler-reports -name "*.json" -type f | head -1)
+          # Prowler v5 generates OCSF format JSON files with account ID in name
+          JSON_FILE=$(find prowler-reports -name "*.ocsf.json" -type f | head -1)
           if [ -f "$JSON_FILE" ]; then
-            TOTAL=$(jq '[.[] | select(.Status)] | length' "$JSON_FILE")
-            PASSED=$(jq '[.[] | select(.Status=="PASS")] | length' "$JSON_FILE")
-            FAILED=$(jq '[.[] | select(.Status=="FAIL")] | length' "$JSON_FILE")
+            TOTAL=$(jq 'length' "$JSON_FILE")
+            PASSED=$(jq '[.[] | select(.status_code=="PASS")] | length' "$JSON_FILE")
+            FAILED=$(jq '[.[] | select(.status_code=="FAIL")] | length' "$JSON_FILE")
+            MANUAL=$(jq '[.[] | select(.status_code=="MANUAL")] | length' "$JSON_FILE")
             
             if [ $TOTAL -gt 0 ]; then
               COMPLIANCE=$(awk "BEGIN {printf \"%.1f\", ($PASSED/$TOTAL)*100}")
@@ -80,6 +81,7 @@ jobs:
             echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| ✅ Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
             echo "| ❌ Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
+            echo "| 📋 Manual | $MANUAL |" >> $GITHUB_STEP_SUMMARY
             echo "| 📊 Total Checks | $TOTAL |" >> $GITHUB_STEP_SUMMARY
             echo "| 🎯 Compliance | $COMPLIANCE% |" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -87,15 +89,15 @@ jobs:
             # List critical failures
             echo "### ⚠️ Critical Findings" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            jq -r '.[] | select(.Status=="FAIL" and .Severity=="critical") | "- **\(.CheckID)**: \(.CheckTitle)"' "$JSON_FILE" | head -10 >> $GITHUB_STEP_SUMMARY || echo "No critical findings" >> $GITHUB_STEP_SUMMARY
+            jq -r '.[] | select(.status_code=="FAIL" and .severity=="Critical") | "- **\(.finding_info.title)**: \(.message)"' "$JSON_FILE" | head -10 >> $GITHUB_STEP_SUMMARY || echo "No critical findings" >> $GITHUB_STEP_SUMMARY
           fi
       
       - name: Check Compliance Threshold
         run: |
-          JSON_FILE=$(find prowler-reports -name "*.json" -type f | head -1)
+          JSON_FILE=$(find prowler-reports -name "*.ocsf.json" -type f | head -1)
           if [ -f "$JSON_FILE" ]; then
-            TOTAL=$(jq '[.[] | select(.Status)] | length' "$JSON_FILE")
-            PASSED=$(jq '[.[] | select(.Status=="PASS")] | length' "$JSON_FILE")
+            TOTAL=$(jq 'length' "$JSON_FILE")
+            PASSED=$(jq '[.[] | select(.status_code=="PASS")] | length' "$JSON_FILE")
             
             if [ $TOTAL -gt 0 ]; then
               COMPLIANCE=$(awk "BEGIN {printf \"%.1f\", ($PASSED/$TOTAL)*100}")
@@ -117,13 +119,13 @@ jobs:
           script: |
             const fs = require('fs');
             const path = require('path');
-            const files = fs.readdirSync('prowler-reports').filter(f => f.endsWith('.json'));
+            const files = fs.readdirSync('prowler-reports').filter(f => f.endsWith('.ocsf.json'));
             if (files.length > 0) {
               const jsonFile = path.join('prowler-reports', files[0]);
               const data = JSON.parse(fs.readFileSync(jsonFile));
-              const total = data.filter(r => r.Status).length;
-              const passed = data.filter(r => r.Status === 'PASS').length;
-              const failed = data.filter(r => r.Status === 'FAIL').length;
+              const total = data.length;
+              const passed = data.filter(r => r.status_code === 'PASS').length;
+              const failed = data.filter(r => r.status_code === 'FAIL').length;
               const compliance = total > 0 ? ((passed/total)*100).toFixed(1) : 0;
               
               const comment = `## 🔒 Prowler Security Audit Results
