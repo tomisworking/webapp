@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Category, Thread, Post
 from users.serializers import UserListSerializer
+import bleach
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -62,6 +63,21 @@ class ThreadDetailSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at', 'last_activity'
         ]
     
+    def validate_content(self, value):
+        """Sanitize HTML content to prevent XSS attacks."""
+        # Allow only safe tags and attributes
+        allowed_tags = ['p', 'br', 'strong', 'em', 'u', 'a', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre']
+        allowed_attrs = {'a': ['href', 'title']}
+        
+        # Clean the content
+        cleaned = bleach.clean(
+            value,
+            tags=allowed_tags,
+            attributes=allowed_attrs,
+            strip=True
+        )
+        return cleaned
+    
     def create(self, validated_data):
         """Set the author to the current user."""
         validated_data['author'] = self.context['request'].user
@@ -89,6 +105,21 @@ class PostSerializer(serializers.ModelSerializer):
             'id', 'author', 'is_edited', 'created_at', 'updated_at'
         ]
     
+    def validate_content(self, value):
+        """Sanitize HTML content to prevent XSS attacks."""
+        # Allow only safe tags and attributes
+        allowed_tags = ['p', 'br', 'strong', 'em', 'u', 'a', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre']
+        allowed_attrs = {'a': ['href', 'title']}
+        
+        # Clean the content
+        cleaned = bleach.clean(
+            value,
+            tags=allowed_tags,
+            attributes=allowed_attrs,
+            strip=True
+        )
+        return cleaned
+    
     def create(self, validated_data):
         """Set the author to the current user."""
         validated_data['author'] = self.context['request'].user
@@ -111,6 +142,21 @@ class ThreadCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Thread
         fields = ['title', 'content', 'category_id']
+    
+    def validate_content(self, value):
+        """Sanitize HTML content to prevent XSS attacks."""
+        # Allow only safe tags and attributes
+        allowed_tags = ['p', 'br', 'strong', 'em', 'u', 'a', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre']
+        allowed_attrs = {'a': ['href', 'title']}
+        
+        # Clean the content
+        cleaned = bleach.clean(
+            value,
+            tags=allowed_tags,
+            attributes=allowed_attrs,
+            strip=True
+        )
+        return cleaned
     
     def create(self, validated_data):
         """Set the author to the current user."""
