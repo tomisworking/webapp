@@ -108,12 +108,18 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 12,
+        }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
     },
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+    {
+        'NAME': 'users.validators.CustomPasswordValidator',
     },
 ]
 
@@ -213,6 +219,21 @@ if not DEBUG:
     SESSION_COOKIE_SAMESITE = 'Lax'
     CSRF_COOKIE_HTTPONLY = True
     CSRF_COOKIE_SAMESITE = 'Lax'
+
+# ============================================
+# EMAIL CONFIGURATION
+# ============================================
+# Console backend for development, SMTP for production
+EMAIL_BACKEND = env_config(
+    'EMAIL_BACKEND',
+    default='django.core.mail.backends.console.EmailBackend'
+)
+EMAIL_HOST = env_config('EMAIL_HOST', default='localhost')
+EMAIL_PORT = env_config('EMAIL_PORT', default=25, cast=int)
+EMAIL_USE_TLS = env_config('EMAIL_USE_TLS', default=False, cast=bool)
+EMAIL_HOST_USER = env_config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env_config('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = env_config('DEFAULT_FROM_EMAIL', default='noreply@kongoapp.pl')
 
 # ============================================
 # LOGGING CONFIGURATION
