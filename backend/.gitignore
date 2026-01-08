@@ -57,3 +57,8 @@ backups/
 cloudflare-origin*
 ssl-cert*
 private-key*
+
+prowler-reports/
+security-reports/
+output/
+*.log

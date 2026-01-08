@@ -54,6 +54,7 @@ MIDDLEWARE = [
     'users.middleware.JWTAuthCookieMiddleware',  # Custom middleware for JWT cookies
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'config.middleware.SecurityHeadersMiddleware',  # Additional security headers
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -179,13 +180,34 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
 }
 
-# CORS Settings
+# CORS Settings - strict configuration
 CORS_ALLOWED_ORIGINS = env_config(
     'CORS_ALLOWED_ORIGINS',
     default='http://localhost:3000'
 ).split(',')
 
 CORS_ALLOW_CREDENTIALS = True
+
+# Explicitly disable wildcard CORS
+CORS_ALLOW_ALL_ORIGINS = False
+
+# Additional CORS security
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
+CORS_EXPOSE_HEADERS = [
+    'content-type',
+    'x-csrftoken',
+]
 
 # CSRF Trusted Origins - support for ALB and Cloudflare
 CSRF_TRUSTED_ORIGINS = env_config(
