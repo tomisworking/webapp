@@ -1,6 +1,6 @@
 # Forum Application 
 
-A complete discussion forum web application built with Django REST Framework and React.
+A complete discussion forum web application built with Django REST Framework and React
 
 
 
